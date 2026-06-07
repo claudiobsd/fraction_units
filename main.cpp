@@ -31,18 +31,18 @@ int main()
     // Try to use some quantities, this is all constexpr so verify the compiler
     // generates code that simply stores the number and nothing else
     // First test just test defining a constexpr with assignment of the same unit
-    constexpr Qty<"m"> x = 50.0*_("m");
+    Qty<"m"> x = 50.0*_("m");
 
     // Try an addition of 2 constexpr values, the compiler should again
     // only emit code that stores the result. The unit of the result
     // is by convention the unit of the left operand, so 'm'
     // and the cm should be automatically converted at compile time
-    auto y=x+(10.0|_("cm"));
+    auto y=x+(10.0*_("cm"));
 
     std::cout << "y=" << y.value << "_" << y.unit.u_def << std::endl;
 
     // Try to create a variable (not constexpr)
-    auto density_whatever = 4.5|_("kg/ft^3");
+    auto density_whatever = 4.5*_("kg/ft^3");
 
     // Assign it to a variable with a different unit, the compiler
     // should emit code that does the conversion at run time
@@ -56,7 +56,7 @@ int main()
     // Do an assignment of a temporary, it should convert the units correctly
     // then emit code that only stores the result (even the conversion factor
     // should be applied at compile time)
-    Qty<"m/s^2"> g=32.174|_("ft/s^2");
+    Qty<"m/s^2"> g=32.174*_("ft/s^2");
 
     std::cout << "g = " << g.value << " _" << g.unit.u_def << std::endl;
 
@@ -65,8 +65,9 @@ int main()
     // And multiply them together with the length from before, the compiler
     // should generate code that multiplies the values together, the unit stuff
     // is all done at compile time
-    auto volume = y*area;
+    auto volume = y * area * g;
 
+    //std::cout << "Areag = " << areag.value << "_" << areag.unit.u_def << std::endl;
     std::cout << "Volume = " << volume.value << "_" << volume.unit.u_def << std::endl;
 
     return 0;

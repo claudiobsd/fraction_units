@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #define _CONSTEVAL_ consteval
+#define _CONSTEXPR_ constexpr
 
 enum UnitError {
     NoError=0,
@@ -15,7 +16,7 @@ enum UnitError {
     TooManyTokens
 };
 
-static constexpr const char *UnitErrorMessages[]={
+static _CONSTEXPR_ const char *UnitErrorMessages[]={
     "OK",
     "Invalid Unit Name",
     "Invalid Exponent",
@@ -103,6 +104,7 @@ struct UnitDefinition {
     constexpr UnitDefinition(const char (&name)[N], const char (&defstring)[M]) {
         std::copy_n(name, N, u_name);
         std::copy_n(defstring, M, u_def);
+        u_defLen=M;
         bool haveDen = false;
         // Numerical part or a unit is composed of 3 64-bit integers: (numerator/denominator)*10^exponent
         // This provides same of better range than any double precision, while using integer arithmetic during compile time
@@ -609,7 +611,142 @@ struct UnitDefinition {
     _CONSTEVAL_ UnitDefinition update() const {
         // Rebuild the u_def string based off the token list and exponents
         // TODO
-        return *this;
+        UnitDefinition result;
+        result.value_ip=value_ip;
+        result.value_den=value_den;
+        result.value_exp=value_exp;
+        result.error_state=error_state;
+        result.error_index=0; // Changing the u_def member will reset this to zero
+
+        // Add the tokens with positive exponents first
+        size_t j=0;
+        size_t txtj=0;
+        for(size_t i=0;i<maxTokens;++i) {
+            if(definition[i].tokEnd==definition[i].tokStart) {
+                break;
+            }
+            if(definition[i].expNum>0) {
+                // Copy the token to the result
+                result.definition[j].expNum=definition[i].expNum;
+                result.definition[j].expDen=definition[i].expDen;
+                result.definition[j].tokStart=txtj;
+                result.definition[j].tokEnd=txtj+definition[i].tokEnd-definition[i].tokStart;
+                ++j;
+                // Add the token as a string
+                if(txtj>0) {
+                    result.u_def[txtj++]='*';
+                }
+                for(auto k=definition[i].tokStart;k<definition[i].tokEnd;++k) {
+                    result.u_def[txtj]=u_def[k];
+                    ++txtj;
+                }
+                // Add the exponent to the string
+                if(definition[i].expNum!=1 || definition[i].expDen!=1) {
+                    // Need to add an exponent
+                    result.u_def[txtj++]='^';
+                    //
+                    int64_t pow10max=1'000'000'000'000'000'000LL;
+                    int64_t number=definition[i].expNum;
+                    bool firstNonZeroDigit=false;
+                    while(number>0) {
+                        char digit='0';
+                        while(number>=pow10max) {
+                            ++digit;
+                            number-=pow10max;
+                        }
+                        if(digit!='0' || firstNonZeroDigit) {
+                            result.u_def[txtj++]=digit;
+                            firstNonZeroDigit=true;
+                        }
+                        pow10max/=10;
+                    }
+                    if(definition[i].expDen!=1) {
+                        result.u_def[txtj++]='/';
+                        pow10max=1'000'000'000'000'000'000LL;
+                        number=definition[i].expDen;
+                        bool firstNonZeroDigit=false;
+                        while(number>0) {
+                            char digit='0';
+                            while(number>=pow10max) {
+                                ++digit;
+                                number-=pow10max;
+                            }
+                            if(digit!='0' || firstNonZeroDigit) {
+                                result.u_def[txtj++]=digit;
+                                firstNonZeroDigit=true;
+                            }
+                            pow10max/=10;
+                        }
+
+                    }
+                }
+            }
+        }
+        // Second pass, add all of the tokens with negative exponents
+        for(size_t i=0;i<maxTokens;++i) {
+            if(definition[i].tokEnd==definition[i].tokStart) {
+                break;
+            }
+            if(definition[i].expNum<0) {
+                // Copy the token to the result
+                result.definition[j].expNum=definition[i].expNum;
+                result.definition[j].expDen=definition[i].expDen;
+                // Add the token as a string
+                if(txtj>0) {
+                    result.u_def[txtj++]='/';
+                }
+                result.definition[j].tokStart=txtj;
+                result.definition[j].tokEnd=txtj+definition[i].tokEnd-definition[i].tokStart;
+                ++j;
+                for(auto k=definition[i].tokStart;k<definition[i].tokEnd;++k) {
+                    result.u_def[txtj]=u_def[k];
+                    ++txtj;
+                }
+                // Add the exponent to the string
+                if(definition[i].expNum!=-1 || definition[i].expDen!=1) {
+                    // Need to add an exponent
+                    result.u_def[txtj++]='^';
+                    //
+                    int64_t pow10max=1'000'000'000'000'000'000LL;
+                    int64_t number=-definition[i].expNum;
+                    bool firstNonZeroDigit=false;
+                    while(number>0) {
+                        char digit='0';
+                        while(number>=pow10max) {
+                            ++digit;
+                            number-=pow10max;
+                        }
+                        if(digit!='0' || firstNonZeroDigit) {
+                            result.u_def[txtj++]=digit;
+                            firstNonZeroDigit=true;
+                        }
+                        pow10max/=10;
+                    }
+                    if(definition[i].expDen!=1) {
+                        result.u_def[txtj++]='/';
+                        pow10max=1'000'000'000'000'000'000LL;
+                        number=definition[i].expDen;
+                        bool firstNonZeroDigit=false;
+                        while(number>0) {
+                            char digit='0';
+                            while(number>=pow10max) {
+                                ++digit;
+                                number-=pow10max;
+                            }
+                            if(digit!='0' || firstNonZeroDigit) {
+                                result.u_def[txtj++]=digit;
+                                firstNonZeroDigit=true;
+                            }
+                            pow10max/=10;
+                        }
+
+                    }
+                }
+            }
+        }
+        result.u_def[txtj++]=0;
+        result.u_defLen=txtj;
+        return result;
     }
 
     // Name of the unit in question (abbreviated form used in formulae, not a formal name, like "Pa" for Pascals)
@@ -618,6 +755,7 @@ struct UnitDefinition {
     // Definition of the unit as text: use "1" for base units, or a proper definition in terms of other units for
     // derived units
     char u_def[maxDefinitionLength]={};
+    size_t u_defLen = 0;
     // The numerical value of the definition, expressed as a fraction and a base-10 exponent: numerator/denominator * 10^exponent
     int64_t value_ip;
     int64_t value_den;
@@ -635,7 +773,7 @@ struct UnitDefinition {
 #include "allunits.hpp"
 
 // This is the only member of UnitDefinition defined outside the class definition
-// because it needs the list of all units to exist as a constexpr to replace the units
+// because it needs the list of all units to exist as a _CONSTEXPR_ to replace the units
 // with their definitions
 // For example, if the definitions are:
 // "?m"="1" (base unit for length, accepting SI prefixes)
@@ -698,7 +836,7 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
                     if(namestart>0) {
                         // TODO: Strip the SI prefix from the unit and compare again
                         size_t newtokenStart=result.definition[i].tokStart;
-                        constexpr char siPrefixes[]="QRYZEPTGMkhdcmnpfazyrq";
+                        _CONSTEXPR_ char siPrefixes[]="QRYZEPTGMkhdcmnpfazyrq";
                         int64_t siPrefixExponent=0;
                         size_t si;
                         for(si=0;siPrefixes[si]!=0;++si) {
@@ -799,6 +937,15 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
     return result;
 }
 
+template<size_t N>
+_CONSTEVAL_ auto to_UnitPart(const UnitDefinition def)
+{
+    char result[N]{};
+    std::copy_n(def.u_def, N, result);
+    return UnitPart<N>{result};
+}
+
+
 // ********************************************************************************************************************
 // ********************************************************************************************************************
 // ********************************************************************************************************************
@@ -808,13 +955,13 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
 template<UnitPart U>
 struct Qty {
     // Default constructor creates the non-dimensional number 0.0
-    constexpr explicit Qty() : value(0.0) {}
+    _CONSTEXPR_ inline Qty() : value(0.0) {}
     // Constructor with an integer value
-    constexpr explicit Qty(int64_t _value) : value((double)_value) {}
+    _CONSTEXPR_ inline Qty(int64_t _value) : value((double)_value) {}
     // Constructor with a floating point value
-    constexpr explicit Qty(double _value) : value(_value) {}
+    _CONSTEXPR_ inline Qty(double _value) : value(_value) {}
     // Constructor for temporaries
-    constexpr explicit Qty(long double _value) : value(_value) {}
+    _CONSTEXPR_ inline Qty(long double _value) : value(_value) {}
 
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
@@ -825,12 +972,12 @@ struct Qty {
         // k*U = k*V * (expand(U)/expand(V))
         // conv. factor = (expand(U)/expand(V))
 
-        // Create a unit V with a value of 1 that is a constexpr
-        // We cannot use the one from the argument because the quantity may not be constexpr
+        // Create a unit V with a value of 1 that is a _CONSTEXPR_
+        // We cannot use the one from the argument because the quantity may not be _CONSTEXPR_
         // even though the unit of the quantity always is
-        constexpr Qty<V> otherunit{1.0};
-        constexpr auto quotientUnit = unit.divide(otherunit.unit); // This is (U / V)
-        constexpr auto combinedUnit=quotientUnit.simplify(); // This makes expand(U/V) == expand(U)/expand(V) == conversion factor
+        _CONSTEXPR_ Qty<V> otherunit{1.0};
+        _CONSTEXPR_ auto quotientUnit = unit.divide(otherunit.unit); // This is (U / V)
+        _CONSTEXPR_ auto combinedUnit=quotientUnit.simplify(); // This makes expand(U/V) == expand(U)/expand(V) == conversion factor
         // After simplification, the result should be a non-dimensional factor, otherwise the units are
         // incompatible and we cannot convert
         // Check that the resulting unit has an 'empty' list of tokens (therefore non-dimensional)
@@ -844,7 +991,7 @@ struct Qty {
             throw "Incompatible Units";
         }
         // Units were compatible, so extract the value
-        constexpr long double convFactor=(combinedUnit.value_den!=1)? ((long double)combinedUnit.value_ip) / combinedUnit.value_den : combinedUnit.value_ip;
+        _CONSTEXPR_ long double convFactor=(combinedUnit.value_den!=1)? ((long double)combinedUnit.value_ip) / combinedUnit.value_den : combinedUnit.value_ip;
         // Apply the exponent
         long double powerOf10=1.0;
         if(combinedUnit.value_exp) {
@@ -868,23 +1015,23 @@ struct Qty {
         return convFactor*powerOf10;
     }
 
-    // Generic unit conversion operator, constexpr will be used automatically
+    // Generic unit conversion operator, _CONSTEXPR_ will be used automatically
     template<UnitPart V>
-    constexpr operator Qty<V>() const {
-        // Create guaranteed constexpr units for source and destination
-        constexpr Qty<V> unitV{1.0};
-        constexpr Qty<U> unitU{1.0};
+    _CONSTEXPR_ operator Qty<V>() const {
+        // Create guaranteed _CONSTEXPR_ units for source and destination
+        _CONSTEXPR_ Qty<V> unitV{1.0};
+        _CONSTEXPR_ Qty<U> unitU{1.0};
         // Calculate a conversion factor
-        constexpr auto convFactor = unitU.conversionFactorTo(unitV);
+        _CONSTEXPR_ auto convFactor = unitU.conversionFactorTo(unitV);
         // Return a completely new object with the requested unit
         // here we multiply the value by the conversion factor
-        // with the caveat that the value may not be constexpr
+        // with the caveat that the value may not be _CONSTEXPR_
         // so the compiler may issue a single multiplication
         // to do the conversion at run time
         return Qty<V>{value*convFactor};
     }
 
-    // The actual unit for the physical quantity is a static constexpr member of the class
+    // The actual unit for the physical quantity is a static _CONSTEXPR_ member of the class
     // therefore the compiler will not create/store any data unless it is used during
     // run time
     static constexpr UnitDefinition unit={U};
@@ -896,9 +1043,16 @@ struct Qty {
 // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
 // This is done to guarantee that adding with += operations do not change the unit of the result
 template <UnitPart U, UnitPart V>
-constexpr Qty<U> operator+(const Qty<U>& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ Qty<U> operator+(const Qty<U>& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     long double finalvalue = lhs.value + rhs.value * convFactor;
+    return Qty<U>{finalvalue};
+}
+
+template <UnitPart U, UnitPart V>
+_CONSTEXPR_ Qty<U> operator-(const Qty<U>& lhs, const Qty<V>& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    long double finalvalue = lhs.value - rhs.value * convFactor;
     return Qty<U>{finalvalue};
 }
 
@@ -909,38 +1063,63 @@ constexpr Qty<U> operator+(const Qty<U>& lhs, const Qty<V>& rhs) {
 // For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
 // treated as a different unit)
 template <UnitPart U, UnitPart V>
-constexpr auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
-    // Guarantee all constexpr constants so the operation is fully constevaled
+_CONSTEXPR_ auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
+    // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
-    constexpr Qty<U> lhsUnit{1.0};
-    constexpr Qty<V> rhsUnit{1.0};
-    constexpr auto finalUnit = lhsUnit.unit.multiply(rhsUnit.unit).update();
-
+    _CONSTEXPR_ Qty<U> lhsUnit{1.0};
+    _CONSTEXPR_ Qty<V> rhsUnit{1.0};
+    _CONSTEXPR_ auto finalUnit = lhsUnit.unit.multiply(rhsUnit.unit).update();
+    constexpr auto finalUnitDefinition = to_UnitPart<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value * rhs.value;
-    return Qty<finalUnit.u_def>{finalvalue};
+    return Qty<finalUnitDefinition>{finalvalue};
+}
+
+template <UnitPart U, UnitPart V>
+_CONSTEXPR_ auto operator/(const Qty<U>& lhs, const Qty<V>& rhs) {
+    // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
+    // even if the arguments have unknown values at compile time
+    _CONSTEXPR_ Qty<U> lhsUnit{1.0};
+    _CONSTEXPR_ Qty<V> rhsUnit{1.0};
+    _CONSTEXPR_ auto finalUnit = lhsUnit.unit.divide(rhsUnit.unit).update();
+    constexpr auto finalUnitDefinition = to_UnitPart<finalUnit.u_defLen>(finalUnit);
+
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value / rhs.value;
+    return Qty<finalUnitDefinition>{finalvalue};
+}
+
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UnitPart V>
+_CONSTEXPR_ Qty<V> operator*(const long double lhs, const Qty<V>& rhs) {
+    long double finalvalue = lhs * rhs.value;
+    return Qty<V>{finalvalue};
+}
+
+template <UnitPart V>
+_CONSTEXPR_ Qty<V> operator*(const double lhs, const Qty<V>& rhs) {
+    long double finalvalue = lhs * rhs.value;
+    return Qty<V>{finalvalue};
 }
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UnitPart V>
-constexpr Qty<V> operator*(const double lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ Qty<V> operator*(const int64_t lhs, const Qty<V>& rhs) {
+    long double finalvalue = lhs * rhs.value;
+    return Qty<V>{finalvalue};
+}
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UnitPart V>
+_CONSTEXPR_ Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
     long double finalvalue = lhs * rhs.value;
     return Qty<V>{finalvalue};
 }
 
 
-
 // This is a hack to create constants in a user-friendly way, I don't like it much
 #define _(TXT) Qty< TXT >{1.0}
-
-
-// This is a hack to create constants of the form number|_("unit")
-// But I don't like the operator precedence when adding 2 constants:
-// 1|_("m") + 2|_("m") is actually interpreted by the compiler as:
-// 1 | (_("m")+2) | _("m"), which completely botches the result
-template<UnitPart U>
-_CONSTEVAL_ Qty<U> operator|(long double v, const Qty<U>&unit) {
-    return Qty<U>(v*unit.value);
-}
-
