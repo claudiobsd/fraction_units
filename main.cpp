@@ -39,7 +39,7 @@ int main()
     // and the cm should be automatically converted at compile time
     auto y=x+(10.0*_("cm"));
 
-    std::cout << "y=" << y.value << "_" << y.unit.u_def << std::endl;
+    std::cout << "y=" << y.value() << "_" << y.unit() << std::endl;
 
     // Try to create a variable (not constexpr)
     auto density_whatever = 4.5*_("kg/ft^3");
@@ -51,14 +51,14 @@ int main()
     // even though these two aren't constexpr values
     Qty<"kg/m^3"> density = density_whatever;
 
-    std::cout << "Density = " << density.value << " _" << density.unit.u_def << std::endl;
+    std::cout << "Density = " << density.value() << " _" << density.unit() << std::endl;
 
     // Do an assignment of a temporary, it should convert the units correctly
     // then emit code that only stores the result (even the conversion factor
     // should be applied at compile time)
     Qty<"m/s^2"> g=32.174*_("ft/s^2");
 
-    std::cout << "g = " << g.value << " _" << g.unit.u_def << std::endl;
+    std::cout << "g = " << g.value() << " _" << g.unit() << std::endl;
 
     // Make another variable
     Qty<"m^2"> area=100.0*_("m^2");
@@ -68,7 +68,12 @@ int main()
     auto volume = y * area * g;
 
     //std::cout << "Areag = " << areag.value << "_" << areag.unit.u_def << std::endl;
-    std::cout << "Volume = " << volume.value << "_" << volume.unit.u_def << std::endl;
+    std::cout << "Volume = " << volume.value() << "_" << volume.unit() << std::endl;
+
+    y+=7*_("cm");
+    y-=1*_("mm");
+
+    std::cout << "y=" << y.value() << "_" << y.unit() << std::endl;
 
     return 0;
 }

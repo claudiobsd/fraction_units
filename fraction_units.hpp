@@ -34,8 +34,8 @@ constexpr size_t maxDefinitionLength = maxTokens*maxTokenLength/2;
 
 // String literals as templates for complex units
 template<size_t N>
-struct UnitPart {
-    constexpr UnitPart(const char (&str)[N]) {
+struct UTxt {
+    constexpr UTxt(const char (&str)[N]) {
         std::copy_n(str, N, value);
     }
     char value[N]={};
@@ -98,7 +98,7 @@ struct UnitDefinition {
     constexpr UnitDefinition() : u_name(""),u_def(""), value_ip(1),value_den(1),value_exp(0), error_state(NoError), error_index(0), definition({}) {}
     // Constructor using a single string literal, creates a unit definition with no name
     template<size_t M>
-    constexpr UnitDefinition(const UnitPart<M> U) : UnitDefinition("",U.value) {}
+    constexpr UnitDefinition(const UTxt<M> U) : UnitDefinition("",U.value) {}
     // Main constructor and parser, creates a unit definition from a name and a string
     template<size_t N, size_t M>
     constexpr UnitDefinition(const char (&name)[N], const char (&defstring)[M]) {
@@ -769,6 +769,8 @@ struct UnitDefinition {
     std::array<tokendata,maxTokens> definition;
 };
 
+
+
 // Now we include the definition of all units here
 #include "allunits.hpp"
 
@@ -938,11 +940,11 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
 }
 
 template<size_t N>
-_CONSTEVAL_ auto to_UnitPart(const UnitDefinition def)
+_CONSTEVAL_ auto to_UTxt(const UnitDefinition def)
 {
     char result[N]{};
     std::copy_n(def.u_def, N, result);
-    return UnitPart<N>{result};
+    return UTxt<N>{result};
 }
 
 
@@ -952,20 +954,21 @@ _CONSTEVAL_ auto to_UnitPart(const UnitDefinition def)
 
 // This is the main 'Quantity' class, with a string as a template argument
 // that represents the unit definition
-template<UnitPart U>
-struct Qty {
+template<UTxt U>
+class Qty {
+public:
     // Default constructor creates the non-dimensional number 0.0
-    _CONSTEXPR_ inline Qty() : value(0.0) {}
-    // Constructor with an integer value
-    _CONSTEXPR_ inline Qty(int64_t _value) : value((double)_value) {}
-    // Constructor with a floating point value
-    _CONSTEXPR_ inline Qty(double _value) : value(_value) {}
+    _CONSTEXPR_ inline Qty() : number(0.0) {}
+    // Constructor with an integer number
+    _CONSTEXPR_ inline Qty(int64_t _value) : number((double)_value) {}
+    // Constructor with a floating point number
+    _CONSTEXPR_ inline Qty(double _value) : number(_value) {}
     // Constructor for temporaries
-    _CONSTEXPR_ inline Qty(long double _value) : value(_value) {}
+    _CONSTEXPR_ inline Qty(long double _value) : number(_value) {}
 
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
-    template<UnitPart V>
+    template<UTxt V>
     _CONSTEVAL_ long double conversionFactorTo(const Qty<V>&) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
@@ -976,7 +979,7 @@ struct Qty {
         // We cannot use the one from the argument because the quantity may not be _CONSTEXPR_
         // even though the unit of the quantity always is
         _CONSTEXPR_ Qty<V> otherunit{1.0};
-        _CONSTEXPR_ auto quotientUnit = unit.divide(otherunit.unit); // This is (U / V)
+        _CONSTEXPR_ auto quotientUnit = unitDef.divide(otherunit.unitDef); // This is (U / V)
         _CONSTEXPR_ auto combinedUnit=quotientUnit.simplify(); // This makes expand(U/V) == expand(U)/expand(V) == conversion factor
         // After simplification, the result should be a non-dimensional factor, otherwise the units are
         // incompatible and we cannot convert
@@ -1016,7 +1019,7 @@ struct Qty {
     }
 
     // Generic unit conversion operator, _CONSTEXPR_ will be used automatically
-    template<UnitPart V>
+    template<UTxt V>
     _CONSTEXPR_ operator Qty<V>() const {
         // Create guaranteed _CONSTEXPR_ units for source and destination
         _CONSTEXPR_ Qty<V> unitV{1.0};
@@ -1028,31 +1031,79 @@ struct Qty {
         // with the caveat that the value may not be _CONSTEXPR_
         // so the compiler may issue a single multiplication
         // to do the conversion at run time
-        return Qty<V>{value*convFactor};
+        return Qty<V>{number*convFactor};
     }
 
-    // The actual unit for the physical quantity is a static _CONSTEXPR_ member of the class
+
+    // Addition operator for 2 units
+    // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
+    // This is done to guarantee that adding with += operations do not change the unit of the result
+    template <UTxt V>
+    Qty<U>& operator+=(const Qty<V>& rhs) {
+        const auto convFactor = rhs.conversionFactorTo(*this);
+        number += rhs.number * convFactor;
+        return *this;
+    }
+    // Subtraction operator for 2 units
+    // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
+    // This is done to guarantee that adding with += operations do not change the unit of the result
+    template <UTxt V>
+    Qty<U>& operator-=(const Qty<V>& rhs) {
+        const auto convFactor = rhs.conversionFactorTo(*this);
+        number -= rhs.number * convFactor;
+        return *this;
+    }
+
+    // Multiplication w/assignment can only exist with a
+    Qty<U>& operator*=(double rhs) {
+        number *= rhs;
+        return *this;
+    }
+
+    Qty<U>& operator/=(double rhs) {
+        number *= rhs;
+        return *this;
+    }
+
+    inline long double value() const { return number; }
+    constexpr const char *unit() { return unitDef.u_def; }
+
+    template<UTxt V>
+    friend class Qty;
+
+    template <UTxt W, UTxt V>
+    friend _CONSTEXPR_ auto operator*(const Qty<W>& lhs, const Qty<V>& rhs);
+
+    template <UTxt W, UTxt V>
+    friend _CONSTEXPR_ auto operator/(const Qty<W>& lhs, const Qty<V>& rhs);
+
+
+private:
+    // Operator *= or /= with another unit does not exist, a variable cannot change units once declared.
+    // For that use case, use the RQty class.
+
+    // The actual unitDef for the physical quantity is a static _CONSTEXPR_ member of the class
     // therefore the compiler will not create/store any data unless it is used during
     // run time
-    static constexpr UnitDefinition unit={U};
-    // This becomes the one and only data member: the value
-    long double value;
+    static constexpr UnitDefinition unitDef={U};
+    // This becomes the one and only data member: the number
+    long double number;
 };
 
 // Addition operator for 2 units
 // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
 // This is done to guarantee that adding with += operations do not change the unit of the result
-template <UnitPart U, UnitPart V>
+template <UTxt U, UTxt V>
 _CONSTEXPR_ Qty<U> operator+(const Qty<U>& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
-    long double finalvalue = lhs.value + rhs.value * convFactor;
+    long double finalvalue = lhs.value() + rhs.value() * convFactor;
     return Qty<U>{finalvalue};
 }
 
-template <UnitPart U, UnitPart V>
+template <UTxt U, UTxt V>
 _CONSTEXPR_ Qty<U> operator-(const Qty<U>& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
-    long double finalvalue = lhs.value - rhs.value * convFactor;
+    long double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<U>{finalvalue};
 }
 
@@ -1062,61 +1113,61 @@ _CONSTEXPR_ Qty<U> operator-(const Qty<U>& lhs, const Qty<V>& rhs) {
 // except identical tokens will merge their exponents
 // For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
 // treated as a different unit)
-template <UnitPart U, UnitPart V>
+template <UTxt U, UTxt V>
 _CONSTEXPR_ auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     _CONSTEXPR_ Qty<U> lhsUnit{1.0};
     _CONSTEXPR_ Qty<V> rhsUnit{1.0};
-    _CONSTEXPR_ auto finalUnit = lhsUnit.unit.multiply(rhsUnit.unit).update();
-    constexpr auto finalUnitDefinition = to_UnitPart<finalUnit.u_defLen>(finalUnit);
+    _CONSTEXPR_ auto finalUnit = lhsUnit.unitDef.multiply(rhsUnit.unitDef).update();
+    constexpr auto finalUnitDefinition = to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value * rhs.value;
+    long double finalvalue = lhs.value() * rhs.value();
     return Qty<finalUnitDefinition>{finalvalue};
 }
 
-template <UnitPart U, UnitPart V>
+template <UTxt U, UTxt V>
 _CONSTEXPR_ auto operator/(const Qty<U>& lhs, const Qty<V>& rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     _CONSTEXPR_ Qty<U> lhsUnit{1.0};
     _CONSTEXPR_ Qty<V> rhsUnit{1.0};
-    _CONSTEXPR_ auto finalUnit = lhsUnit.unit.divide(rhsUnit.unit).update();
-    constexpr auto finalUnitDefinition = to_UnitPart<finalUnit.u_defLen>(finalUnit);
+    _CONSTEXPR_ auto finalUnit = lhsUnit.unitDef.divide(rhsUnit.unitDef).update();
+    constexpr auto finalUnitDefinition = to_UTxt<finalUnit.u_defLen>(finalUnit);
 
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value / rhs.value;
+    long double finalvalue = lhs.value() / rhs.value();
     return Qty<finalUnitDefinition>{finalvalue};
 }
 
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
-template <UnitPart V>
+template <UTxt V>
 _CONSTEXPR_ Qty<V> operator*(const long double lhs, const Qty<V>& rhs) {
-    long double finalvalue = lhs * rhs.value;
+    long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
-template <UnitPart V>
+template <UTxt V>
 _CONSTEXPR_ Qty<V> operator*(const double lhs, const Qty<V>& rhs) {
-    long double finalvalue = lhs * rhs.value;
+    long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
-template <UnitPart V>
+template <UTxt V>
 _CONSTEXPR_ Qty<V> operator*(const int64_t lhs, const Qty<V>& rhs) {
-    long double finalvalue = lhs * rhs.value;
+    long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
-template <UnitPart V>
+template <UTxt V>
 _CONSTEXPR_ Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
-    long double finalvalue = lhs * rhs.value;
+    long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
