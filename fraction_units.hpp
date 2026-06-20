@@ -4,8 +4,15 @@
 #include <array>
 #include <algorithm>
 
-#define _CONSTEVAL_ consteval
+// Define this as-needed to enable the run time component class
+#define RUNTIME_COMPONENT 1
+
+#define _CONSTEVAL_ constexpr
 #define _CONSTEXPR_ constexpr
+
+// This is a hack to create constants in a user-friendly way, I don't like it much
+#define _(TXT) Qty< TXT >{1.0}
+
 
 enum UnitError {
     NoError=0,
@@ -987,7 +994,7 @@ public:
         if(combinedUnit.definition[0].tokEnd!=combinedUnit.definition[0].tokStart) {
             // Also check that there were no errors
             if(combinedUnit.error_state!=UnitError::NoError) {
-                throw std::runtime_error(UnitErrorMessages[combinedUnit.error_state]);
+                throw UnitErrorMessages[combinedUnit.error_state];
             }
             // This isn't a real throw, just generates a compile error. The string will be buried in other
             // messages but still visible by the user
@@ -1077,6 +1084,9 @@ public:
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ auto operator/(const Qty<W>& lhs, const Qty<V>& rhs);
 
+#ifdef RUNTIME_COMPONENT
+    friend class RQty;
+#endif
 
 private:
     // Operator *= or /= with another unit does not exist, a variable cannot change units once declared.
@@ -1171,6 +1181,452 @@ _CONSTEXPR_ Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
     return Qty<V>{finalvalue};
 }
 
+// ********************************************************************************************************************
+// ********************************************************************************************************************
+// ********************************************************************************************************************
 
-// This is a hack to create constants in a user-friendly way, I don't like it much
-#define _(TXT) Qty< TXT >{1.0}
+// This is the runtime component 'Quantity' class, with a string defined at run time
+// that represents the unit definition
+#ifdef RUNTIME_COMPONENT
+
+#include <stdexcept>
+
+class RQty {
+public:
+    // Default constructor creates the non-dimensional number 0.0
+    inline RQty() : number(0.0), unitDef() {}
+    // Constructor with an integer number
+    template<size_t N>
+    inline RQty(int64_t _value, UTxt<N> _unit) : number((double)_value), unitDef(_unit) {}
+    // Constructor with a floating point number
+    template<size_t N>
+    inline RQty(double _value, UTxt<N> _unit) : number(_value), unitDef(_unit) {}
+    // Constructor for temporaries
+    template<size_t N>
+    inline RQty(long double _value, UTxt<N> _unit) : number(_value), unitDef(_unit) {}
+private:
+    // Constructor used only internally
+    inline RQty(double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
+    // Constructor used only internally
+    inline RQty(long double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
+
+public:
+    // Calculate a multiplicative conversion factor to convert from
+    // the current unit to the unit of the given argument
+    inline long double conversionFactorTo(const RQty& unitTo) const {
+        // To convert a unit from U to V:
+        // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
+        // k*U = k*V * (expand(U)/expand(V))
+        // conv. factor = (expand(U)/expand(V))
+
+        // Create a unit V with a value of 1 that is a _CONSTEXPR_
+        // We cannot use the one from the argument because the quantity may not be _CONSTEXPR_
+        // even though the unit of the quantity always is
+        auto quotientUnit = unitDef.divide(unitTo.unitDef); // This is (U / V)
+        auto combinedUnit = quotientUnit.simplify(); // This makes expand(U/V) == expand(U)/expand(V) == conversion factor
+        // After simplification, the result should be a non-dimensional factor, otherwise the units are
+        // incompatible and we cannot convert
+        // Check that the resulting unit has an 'empty' list of tokens (therefore non-dimensional)
+        if(combinedUnit.definition[0].tokEnd!=combinedUnit.definition[0].tokStart) {
+            // Also check that there were no errors
+            if(combinedUnit.error_state!=UnitError::NoError) {
+                throw std::runtime_error(UnitErrorMessages[combinedUnit.error_state]);
+            }
+            throw std::runtime_error("Incompatible Units");
+        }
+        // Units were compatible, so extract the value
+        long double convFactor=(combinedUnit.value_den!=1)? ((long double)combinedUnit.value_ip) / combinedUnit.value_den : combinedUnit.value_ip;
+        // Apply the exponent
+        long double powerOf10=1.0;
+        if(combinedUnit.value_exp) {
+            if(intabs(combinedUnit.value_exp)<18) {
+                int64_t ipowerOf10=1;
+                // Should use a table for this, but for now...
+                for(auto k=0;k<intabs(combinedUnit.value_exp);++k) {
+                    ipowerOf10*=10;
+                }
+                if(combinedUnit.value_exp<0) {
+                    powerOf10/=ipowerOf10;
+                } else {
+                    powerOf10*=ipowerOf10;
+                }
+            }
+            else {
+                powerOf10 = std::pow(10.0,combinedUnit.value_exp);
+            }
+        }
+        // And we have the conversion factor
+        return convFactor*powerOf10;
+    }
+    // Calculate a multiplicative conversion factor to convert from
+    // the current unit to the unit of the given argument
+    template<UTxt V>
+    inline long double conversionFactorTo(const Qty<V>& unitTo) const {
+        // To convert a unit from U to V:
+        // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
+        // k*U = k*V * (expand(U)/expand(V))
+        // conv. factor = (expand(U)/expand(V))
+
+        // Create a unit V with a value of 1 that is a _CONSTEXPR_
+        // We cannot use the one from the argument because the quantity may not be _CONSTEXPR_
+        // even though the unit of the quantity always is
+        auto quotientUnit = unitDef.divide(unitTo.unitDef); // This is (U / V)
+        auto combinedUnit = quotientUnit.simplify(); // This makes expand(U/V) == expand(U)/expand(V) == conversion factor
+        // After simplification, the result should be a non-dimensional factor, otherwise the units are
+        // incompatible and we cannot convert
+        // Check that the resulting unit has an 'empty' list of tokens (therefore non-dimensional)
+        if(combinedUnit.definition[0].tokEnd!=combinedUnit.definition[0].tokStart) {
+            // Also check that there were no errors
+            if(combinedUnit.error_state!=UnitError::NoError) {
+                throw std::runtime_error(UnitErrorMessages[combinedUnit.error_state]);
+            }
+            throw std::runtime_error("Incompatible Units");
+        }
+        // Units were compatible, so extract the value
+        long double convFactor=(combinedUnit.value_den!=1)? ((long double)combinedUnit.value_ip) / combinedUnit.value_den : combinedUnit.value_ip;
+        // Apply the exponent
+        long double powerOf10=1.0;
+        if(combinedUnit.value_exp) {
+            if(intabs(combinedUnit.value_exp)<18) {
+                int64_t ipowerOf10=1;
+                // Should use a table for this, but for now...
+                for(auto k=0;k<intabs(combinedUnit.value_exp);++k) {
+                    ipowerOf10*=10;
+                }
+                if(combinedUnit.value_exp<0) {
+                    powerOf10/=ipowerOf10;
+                } else {
+                    powerOf10*=ipowerOf10;
+                }
+            }
+            else {
+                powerOf10 = std::pow(10.0,combinedUnit.value_exp);
+            }
+        }
+        // And we have the conversion factor
+        return convFactor*powerOf10;
+    }
+    // Calculate a multiplicative conversion factor to convert from
+    // the given unit to the current unit
+    template<UTxt V>
+    inline long double conversionFactorFrom(const Qty<V>& unitFrom) const {
+        // To convert a unit from U to V:
+        // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
+        // k*U = k*V * (expand(U)/expand(V))
+        // conv. factor = (expand(U)/expand(V))
+
+        // Create a unit V with a value of 1 that is a _CONSTEXPR_
+        // We cannot use the one from the argument because the quantity may not be _CONSTEXPR_
+        // even though the unit of the quantity always is
+        auto quotientUnit = unitFrom.unitDef.divide(unitDef); // This is (U / V)
+        auto combinedUnit = quotientUnit.simplify(); // This makes expand(U/V) == expand(U)/expand(V) == conversion factor
+        // After simplification, the result should be a non-dimensional factor, otherwise the units are
+        // incompatible and we cannot convert
+        // Check that the resulting unit has an 'empty' list of tokens (therefore non-dimensional)
+        if(combinedUnit.definition[0].tokEnd!=combinedUnit.definition[0].tokStart) {
+            // Also check that there were no errors
+            if(combinedUnit.error_state!=UnitError::NoError) {
+                throw std::runtime_error(UnitErrorMessages[combinedUnit.error_state]);
+            }
+            throw std::runtime_error("Incompatible Units");
+        }
+        // Units were compatible, so extract the value
+        long double convFactor=(combinedUnit.value_den!=1)? ((long double)combinedUnit.value_ip) / combinedUnit.value_den : combinedUnit.value_ip;
+        // Apply the exponent
+        long double powerOf10=1.0;
+        if(combinedUnit.value_exp) {
+            if(intabs(combinedUnit.value_exp)<18) {
+                int64_t ipowerOf10=1;
+                // Should use a table for this, but for now...
+                for(auto k=0;k<intabs(combinedUnit.value_exp);++k) {
+                    ipowerOf10*=10;
+                }
+                if(combinedUnit.value_exp<0) {
+                    powerOf10/=ipowerOf10;
+                } else {
+                    powerOf10*=ipowerOf10;
+                }
+            }
+            else {
+                powerOf10 = std::pow(10.0,combinedUnit.value_exp);
+            }
+        }
+        // And we have the conversion factor
+        return convFactor*powerOf10;
+    }
+
+    // Generic unit conversion operator
+    template<UTxt V>
+    _CONSTEXPR_ operator Qty<V>() const {
+        // Create guaranteed _CONSTEXPR_ units for source and destination
+        _CONSTEXPR_ Qty<V> unitV{1.0};
+        // Calculate a conversion factor
+        auto convFactor = conversionFactorTo(unitV);
+        // Return a completely new object with the requested unit
+        return Qty<V>{number*convFactor};
+    }
+
+
+    // Operations with other run time units
+    // Assignment will not CONVERT units, will copy the units of the other object
+    // To convert to a fixed set of units, assign it to a Qty<U>
+    RQty& operator=(const RQty& rhs) {
+        number = rhs.number;
+        unitDef = rhs.unitDef;
+        return *this;
+    }
+
+    // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
+    // This is done to guarantee that adding with += operations do not change the unit of the result
+    template <UTxt V>
+    RQty& operator+=(const Qty<V>& rhs) {
+        const auto convFactor = conversionFactorFrom(rhs);
+        number += rhs.number * convFactor;
+        return *this;
+    }
+    RQty& operator+=(const RQty& rhs) {
+        const auto convFactor = rhs.conversionFactorTo(*this);
+        number += rhs.number * convFactor;
+        return *this;
+    }
+    RQty& operator+=(const double rhs) {
+        // We'll only allow this if the destination unit is compattible with nondimensional values
+        constexpr Qty<""> nonDimensional{1.0};
+        // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
+        const auto convFactor = conversionFactorFrom(nonDimensional);
+        number += rhs * convFactor;
+        return *this;
+    }
+    RQty& operator+=(const int64_t rhs) {
+        // We'll only allow this if the destination unit is compattible with nondimensional values
+        constexpr Qty<""> nonDimensional{1.0};
+        // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
+        const auto convFactor = conversionFactorFrom(nonDimensional);
+        number += rhs * convFactor;
+        return *this;
+    }
+
+    template <UTxt V>
+    inline RQty& operator-=(const Qty<V>& rhs) {
+        const auto convFactor = conversionFactorFrom(rhs);
+        number -= rhs.number * convFactor;
+        return *this;
+    }
+    inline RQty& operator-=(const RQty& rhs) {
+        const auto convFactor = rhs.conversionFactorTo(*this);
+        number -= rhs.number * convFactor;
+        return *this;
+    }
+    inline RQty& operator-=(const double rhs) {
+        // We'll only allow this if the destination unit is compattible with nondimensional values
+        constexpr Qty<""> nonDimensional{1.0};
+        // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
+        const auto convFactor = conversionFactorFrom(nonDimensional);
+        number -= rhs * convFactor;
+        return *this;
+    }
+    inline RQty& operator-=(const int64_t rhs) {
+        // We'll only allow this if the destination unit is compattible with nondimensional values
+        constexpr Qty<""> nonDimensional{1.0};
+        // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
+        const auto convFactor = conversionFactorFrom(nonDimensional);
+        number -= rhs * convFactor;
+        return *this;
+    }
+
+    // Multiplication w/assignment
+    inline RQty& operator*=(double rhs) {
+        number *= rhs;
+        return *this;
+    }
+    inline RQty& operator*=(int64_t rhs) {
+        number *= rhs;
+        return *this;
+    }
+    inline RQty& operator*=(const RQty& rhs) {
+        auto finalUnit = unitDef.multiply(rhs.unitDef).update();
+        unitDef = finalUnit;
+        number *= rhs.value();
+        return *this;
+    }
+    template<UTxt V>
+    inline RQty& operator*=(const Qty<V>& rhs) {
+        auto finalUnit = unitDef.multiply(rhs.unitDef).update();
+        unitDef = finalUnit;
+        number *= rhs.value();
+        return *this;
+    }
+
+    // Division w/assignment
+    inline RQty& operator/=(double rhs) {
+        number /= rhs;
+        return *this;
+    }
+    inline RQty& operator/=(int64_t rhs) {
+        number /= rhs;
+        return *this;
+    }
+    inline RQty& operator/=(const RQty& rhs) {
+        auto finalUnit = unitDef.divide(rhs.unitDef).update();
+        unitDef = finalUnit;
+        number /= rhs.value();
+        return *this;
+    }
+    template<UTxt V>
+    inline RQty& operator/=(const Qty<V>& rhs) {
+        auto finalUnit = unitDef.divide(rhs.unitDef).update();
+        unitDef = finalUnit;
+        number /= rhs.value();
+        return *this;
+    }
+
+
+    inline long double value() const { return number; }
+    const char *unit() { return unitDef.u_def; }
+
+    template <UTxt V>
+    friend inline auto operator*(const RQty& lhs, const Qty<V>& rhs);
+    template <UTxt V>
+    friend inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
+    friend inline auto operator*(const RQty& lhs, const RQty& rhs);
+    friend inline auto operator*(const long double lhs, const RQty& rhs);
+    friend inline auto operator*(const double lhs, const RQty& rhs);
+    friend inline auto operator*(const int64_t lhs, const RQty& rhs);
+    friend inline auto operator*(const RQty& lhs, const long double rhs);
+    friend inline auto operator*(const RQty& lhs, const double rhs);
+    friend inline auto operator*(const RQty& lhs, const int64_t rhs);
+
+    template <UTxt V>
+    friend inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
+    template <UTxt V>
+    friend inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
+    friend inline auto operator/(const RQty& lhs, const RQty& rhs);
+
+    template <UTxt V>
+    friend auto operator+(const RQty& lhs, const Qty<V>& rhs);
+    friend auto operator+(const RQty& lhs, const RQty& rhs);
+    template <UTxt V>
+    friend auto operator-(const RQty& lhs, const Qty<V>& rhs);
+    friend auto operator-(const RQty& lhs, const RQty& rhs);
+
+private:
+
+    long double number;
+    UnitDefinition unitDef;
+};
+
+// Addition operator for 2 units
+// Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
+// This is done to guarantee that adding with += operations do not change the unit of the result
+template <UTxt V>
+auto operator+(const RQty& lhs, const Qty<V>& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    const double finalvalue = lhs.value() + rhs.value() * convFactor;
+    return RQty{finalvalue, lhs.unitDef};
+}
+template <UTxt V>
+auto operator+(const Qty<V>& lhs, const RQty& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    const double finalvalue = lhs.value() + rhs.value() * convFactor;
+    return Qty<V>{finalvalue};
+}
+auto operator+(const RQty& lhs, const RQty& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    const double finalvalue = lhs.value() + rhs.value() * convFactor;
+    return RQty{finalvalue, lhs.unitDef};
+}
+
+template <UTxt V>
+auto operator-(const RQty& lhs, const Qty<V>& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    const double finalvalue = lhs.value() - rhs.value() * convFactor;
+    return RQty{finalvalue, lhs.unitDef};
+}
+template <UTxt V>
+auto operator-(const Qty<V>& lhs, const RQty& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    const double finalvalue = lhs.value() - rhs.value() * convFactor;
+    return Qty<V>{finalvalue};
+}
+auto operator-(const RQty& lhs, const RQty& rhs) {
+    const auto convFactor = rhs.conversionFactorTo(lhs);
+    const double finalvalue = lhs.value() - rhs.value() * convFactor;
+    return RQty{finalvalue, lhs.unitDef};
+}
+
+// Multiplication operator for 2 units
+// No unit conversion is performed, the values are simply multiplied
+// The resulting unit is not simplified in any way
+// except identical tokens will merge their exponents
+// For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
+// treated as a different unit)
+template <UTxt V>
+auto operator*(const RQty& lhs, const Qty<V>& rhs) {
+    auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value() * rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+template <UTxt V>
+auto operator*(const Qty<V>& lhs, const RQty& rhs) {
+    auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value() * rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+auto operator*(const RQty& lhs, const RQty& rhs) {
+    auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value() * rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+
+template <UTxt V>
+auto operator/(const RQty& lhs, const Qty<V>& rhs) {
+    auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value() / rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+template <UTxt V>
+auto operator/(const Qty<V>& lhs, const RQty& rhs) {
+    auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value() * rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+auto operator/(const RQty& lhs, const RQty& rhs) {
+    auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
+    // This it the only operation the compiler will do at run time if needed
+    long double finalvalue = lhs.value() / rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+inline auto operator*(const long double lhs, const RQty& rhs) {
+    long double finalvalue = lhs * rhs.value();
+    return RQty{finalvalue,rhs.unitDef};
+}
+inline auto operator*(const double lhs, const RQty& rhs) {
+    long double finalvalue = lhs * rhs.value();
+    return RQty{finalvalue,rhs.unitDef};
+}
+inline auto operator*(const int64_t lhs, const RQty& rhs) {
+    long double finalvalue = lhs * rhs.value();
+    return RQty{finalvalue,rhs.unitDef};
+}
+inline auto operator*(const RQty& lhs, const long double rhs) {
+    long double finalvalue = rhs * lhs.value();
+    return RQty{finalvalue,lhs.unitDef};
+}
+inline auto operator*(const RQty& lhs, const double rhs) {
+    long double finalvalue = rhs * lhs.value();
+    return RQty{finalvalue,lhs.unitDef};
+}
+inline auto operator*(const RQty& lhs, const int64_t rhs) {
+    long double finalvalue = rhs * lhs.value();
+    return RQty{finalvalue,lhs.unitDef};
+}
+
+#endif
