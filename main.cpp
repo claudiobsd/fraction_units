@@ -1,6 +1,16 @@
 #include <iostream>
+#include <cmath>
 
 #include "fraction_units.hpp"
+
+
+auto massFlow(const Qty<"kg/m^3"> density, const Qty<"m^2"> area, const Qty<"m/s"> velocity) {
+    return density * area * velocity;
+}
+
+double cosUnit(const Qty<"r"> angle) {
+    return std::cos(angle.value());
+}
 
 int main()
 {
@@ -80,5 +90,40 @@ int main()
     auto fourapples = trio + 1*_("apples");
 
     std::cout << "4apples=" << fourapples.value() << "_" << fourapples.unit() << std::endl;
+
+    // ************************************************************
+    // Basic tests for the run-time components
+
+    // Constructor
+    RQty velocity(10.0,"m/s");
+
+    // Conversion from Qty<U>
+    RQty speed = 10.0*_("m/s");
+
+    // Multiplication of units at run time
+    speed*=velocity;
+
+    std::cout << "speed^2 =" << speed.value() << "_" << speed.unit() << std::endl;
+
+    // Incompatibility of units at run time
+    try {
+    speed += velocity;
+    }
+    catch(std::exception& e) {
+        std::cout << "Exception thrown: " << e.what() << std::endl;
+    }
+
+    speed= velocity / 2;
+
+    std::cout << "speed/2 =" << speed.value() << "_" << speed.unit() << std::endl;
+
+    auto flow = massFlow(density,area,velocity);
+
+    std::cout << "flow=" << flow.value() << "_" << flow.unit() << std::endl;
+
+    // Check if the constants-as-units work
+
+    std::cout << "cos 180 degrees = " << cosUnit(180*_("°")) << std::endl;
+
     return 0;
 }

@@ -2,13 +2,15 @@
 
 #include <cmath>
 #include <array>
+#include <cstdint>
 #include <algorithm>
 
 // Define this as-needed to enable the run time component class
 #define RUNTIME_COMPONENT 1
 
-#define _CONSTEVAL_ constexpr
-#define _CONSTEXPR_ constexpr
+#define _ALWAYS_CONSTEXPR_ constexpr
+//constexpr
+#define _CONSTEXPR_
 
 // This is a hack to create constants in a user-friendly way, I don't like it much
 #define _(TXT) Qty< TXT >{1.0}
@@ -49,7 +51,7 @@ struct UTxt {
 };
 
 // Basic math because we cannot use library functions within consteval
-_CONSTEVAL_ int64_t gcd(int64_t a, int64_t b)
+_ALWAYS_CONSTEXPR_ int64_t gcd(int64_t a, int64_t b)
 {
     while(b) {
         auto t=b;
@@ -59,7 +61,7 @@ _CONSTEVAL_ int64_t gcd(int64_t a, int64_t b)
     return a;
 }
 
-_CONSTEVAL_ int64_t intpow(int64_t number,int64_t exp)
+_ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,int64_t exp)
 {
     int64_t result=number;
     --exp;
@@ -71,20 +73,234 @@ _CONSTEVAL_ int64_t intpow(int64_t number,int64_t exp)
     return result;
 }
 
-_CONSTEVAL_ int64_t intabs(int64_t number) {
+_ALWAYS_CONSTEXPR_ int64_t intabs(int64_t number) {
     return (number<0)? -number:number;
 }
 
-_CONSTEVAL_ std::pair<int64_t,int64_t> addfraction(int64_t a_num,int64_t a_den, int64_t b_num, int64_t b_den)
-{
-    std::pair<int64_t,int64_t> result;
-    result.first = a_num*b_den+b_num*a_den;
-    result.second = a_den*b_den;
-    auto divisor = gcd(result.first,result.second);
+// Added this because MSVC does not support __int128 yet (when???)
+struct integer128 {
+    // 128 bit unsigned integers
+    uint64_t loword;
+    uint64_t hiword;
 
-    result.first/=divisor;
-    result.second/=divisor;
-    return result;
+    inline _ALWAYS_CONSTEXPR_ integer128(int64_t a) : loword(a), hiword(a<0? -1:0) {}
+    inline _ALWAYS_CONSTEXPR_ integer128(uint64_t lo,uint64_t hi) : loword(lo),hiword(hi) {}
+
+    static _ALWAYS_CONSTEXPR_ integer128 add128(integer128 a, integer128 b) {
+        // Shift the low word to capture the carry bit
+        auto lw = (a.loword>>1)+(b.loword>>1) + (a.loword&b.loword&1LL);
+        // Add the high word with carry
+        auto hw = a.hiword + b.hiword + ((lw>>63)&1);
+        // Shift back the low word and insert the low bit back
+        lw<<=1;
+        lw|=(b.loword^a.loword)&1;
+        return {lw,hw};
+    }
+
+    static inline _ALWAYS_CONSTEXPR_ integer128 inc128(integer128 a) {
+        if(a.loword==~0ULL) {
+            return {a.loword+1,a.hiword+1};
+        }
+        return {a.loword+1,a.hiword};
+    }
+
+    static inline _ALWAYS_CONSTEXPR_ integer128 neg128(integer128 a) {
+        auto lw = ~a.loword;
+        auto hw = ~a.hiword;
+        return inc128({lw,hw});
+    }
+    static inline _ALWAYS_CONSTEXPR_ integer128 abs128(integer128 a) {
+        return (a.hiword&(1ULL<<63))? neg128(a):a;
+        }
+
+    static _ALWAYS_CONSTEXPR_ integer128 mul64x64(int64_t a, int64_t b)
+    {
+        auto sign = (b^a)>>63;
+        if(a<0) a=-a;
+        if(b<0) b=-b;
+        const uint64_t ah=((uint64_t)a)>>32;
+        const uint64_t al=((uint64_t)a)&0xffffffff;
+        const uint64_t bh=((uint64_t)b)>>32;
+        const uint64_t bl=((uint64_t)b)&0xffffffff;
+
+        // midword is guaranteed not to have carry because
+        // it multiplies 32 bits x 31 bits = 63 bits
+        // then adds two 63-bit numbers together = 64 bits, no carry
+        auto midword = ah * bl+bh * al;
+        const auto result = add128({al*bl,ah*bh}, {(midword<<32),(midword>>32)});
+        if(sign) {
+            return neg128(result);
+        }
+        return result;
+    }
+
+    static _ALWAYS_CONSTEXPR_ bool iszero128(integer128 a) { return (a.loword|a.hiword)==0; }
+
+    // LSL
+    inline _ALWAYS_CONSTEXPR_ integer128 operator<<(int shift) {
+        if(shift>=64) {
+            return {0ULL,loword<<(shift-64)};
+        }
+        if(shift<=0) {
+            return *this;
+        }
+        uint64_t hw = (hiword<<shift) | (loword>>(64-shift));
+        uint64_t lw = loword<<shift;
+        return {lw,hw};
+    }
+
+    // LSR (unsigned, not ASR)
+    inline _ALWAYS_CONSTEXPR_ integer128 operator>>(int shift) {
+        if(shift>=64) {
+            return {hiword>>(shift-64),0ULL};
+        }
+        if(shift<=0) {
+            return *this;
+        }
+        uint64_t lw = (loword>>shift) | (hiword<<(64-shift));
+        uint64_t hw = hiword>>shift;
+        return {lw,hw};
+    }
+
+    inline static _ALWAYS_CONSTEXPR_ uint64_t testbit128(integer128 a, int bit) {
+        if(bit>=128) return 0;
+        if(bit<0) return 0;
+        if(bit>=64) return (a.hiword&(1ULL<<(bit-64)))? 1:0;
+        return (a.loword&(1ULL<<bit))? 1:0;
+    }
+
+    inline _ALWAYS_CONSTEXPR_ bool operator>=(integer128 b) {
+        if(hiword==b.hiword)
+            return loword>=b.loword;
+        return hiword>b.hiword;
+    }
+    inline _ALWAYS_CONSTEXPR_ bool operator<(integer128 b) {
+        if(hiword==b.hiword)
+            return loword<b.loword;
+        return hiword<b.hiword;
+    }
+
+    // Division is flooring division, so the remainder has the same sign as the dividend
+    // For example, -10/3 = (q==-3)*3+(r==-1)
+    //              -10/-3 = (q==3)*(-3)+(r==-1)
+    //              10/3 = (q==3)*3+(r==1)
+    //              10/-3 = (q==-3)*(-3)+(r==1)
+    static inline _ALWAYS_CONSTEXPR_ integer128 div128(integer128 a, integer128 b) {
+        integer128 quot{0};
+        int shift=0;
+        int isneg=0;
+        if(iszero128(b)) {
+            throw "Divide by zero";
+        }
+        if(iszero128(a)) {
+            return a;
+        }
+        if(testbit128(a,127)) {
+            a = neg128(a);
+            isneg^=1;
+        }
+        if(testbit128(b,127)) {
+            b = neg128(b);
+            isneg^=1;
+        }
+
+        while(b<a) {
+            b = b << 1;
+            ++shift;
+        }
+        while(!iszero128(a) && shift>=0) {
+            quot = quot << 1;
+            if(a>=b) {
+            quot.loword|=1;
+            a = add128(a,neg128(b));
+            }
+            a = a << 1;
+            --shift;
+        }
+        if(shift>=0) {
+            quot = quot << (shift+1);
+        }
+        return isneg? neg128(quot):quot;
+    }
+
+
+    // Remainder operator: Uses flooring division, so the remainder has the same sign as the dividend
+    // For example, -10/3 = (q==-3)*3+(r==-1)
+    //              -10/-3 = (q==3)*(-3)+(r==-1)
+    //              10/3 = (q==3)*3+(r==1)
+    //              10/-3 = (q==-3)*(-3)+(r==1)
+
+    static inline _ALWAYS_CONSTEXPR_ integer128 rem128(integer128 a, integer128 b) {
+        int shift=0;
+        if(iszero128(b) || iszero128(a)) {
+            return a;
+        }
+        int isnegA=a.hiword>>63;
+        int isnegB=b.hiword>>63;
+        if(isnegA) {
+            a = neg128(a);
+        }
+        if(isnegB) {
+            b = neg128(b);
+        }
+        while(b<a) {
+            b = b << 1;
+            ++shift;
+        }
+        int initial_shift=shift;
+        while(!iszero128(a) && shift>=0) {
+            if(a>=b) {
+                a = add128(a,neg128(b));
+            }
+            a = a << 1;
+            --shift;
+        }
+        a = a >> (initial_shift+1);
+        return (isnegA)? neg128(a):a;
+    }
+    // MODULO OPERATOR: Remainder but always in the range of [0..N-1] with N==divisor
+    static inline _ALWAYS_CONSTEXPR_ integer128 mod128(integer128 a, integer128 b) {
+        integer128 remainder = rem128(a,b);
+        auto isnegA = a.hiword>>63;
+        auto isnegB = b.hiword>>63;
+        if(isnegA==isnegB) {
+            return remainder;
+        }
+        return add128(remainder,b);
+    }
+
+    inline _ALWAYS_CONSTEXPR_ integer128 operator%(integer128 b) {
+        return rem128(*this,b);
+    }
+
+    inline _ALWAYS_CONSTEXPR_ integer128 operator/(integer128 b) {
+        return div128(*this,b);
+    }
+
+};
+
+_ALWAYS_CONSTEXPR_ integer128 gcd128(integer128 a, integer128 b)
+{
+    while(!integer128::iszero128(b)) {
+        auto t=b;
+        b=a%b;
+        a=t;
+    }
+    return a;
+}
+
+_ALWAYS_CONSTEXPR_ std::pair<int64_t,int64_t> addfraction(int64_t a_num,int64_t a_den, int64_t b_num, int64_t b_den)
+{
+    integer128 numerator = integer128::add128(integer128::mul64x64(a_num, b_den) , integer128::mul64x64(b_num,a_den));
+    integer128 denominator = integer128::mul64x64(a_den,b_den);
+    auto divisor = gcd128(integer128::abs128(numerator), integer128::abs128(denominator));
+
+    numerator = numerator / divisor;
+    denominator = denominator / divisor;
+    if((numerator.hiword!=0ULL && numerator.hiword!=~0ULL) || (denominator.hiword!=0ULL && denominator.hiword!=~0ULL)) {
+        throw "Precision loss";
+    }
+    return {numerator.loword,denominator.loword};
 }
 
 // ********************************************************************************************************************
@@ -112,6 +328,22 @@ struct UnitDefinition {
         std::copy_n(name, N, u_name);
         std::copy_n(defstring, M, u_def);
         u_defLen=M;
+        parseUnit();
+    }
+
+#ifdef RUNTIME_COMPONENT
+
+    constexpr UnitDefinition(const char *defstring, size_t len) {
+        u_name[0]=0;
+        std::copy_n(defstring, len, u_def);
+        u_defLen=len;
+        parseUnit();
+    }
+
+#endif
+    // Main parser of a unit definition. Extracts unit data from a definition string previously stored in
+    // member u_def, with length u_defLen. Fills out all other members.
+    _ALWAYS_CONSTEXPR_ void parseUnit() {
         bool haveDen = false;
         // Numerical part or a unit is composed of 3 64-bit integers: (numerator/denominator)*10^exponent
         // This provides same of better range than any double precision, while using integer arithmetic during compile time
@@ -122,7 +354,7 @@ struct UnitDefinition {
         // Parse the value first
         int expmove = 0;
         size_t i=0;
-        while(i<M) {
+        while(i<u_defLen) {
             if(u_def[i]>='0'&&u_def[i]<='9') {
                 intPart*=10;
                 intPart+=u_def[i]-'0';
@@ -140,10 +372,15 @@ struct UnitDefinition {
                         expTen=0;
                         haveDen=true;
                     } else {
-                    // No other chars allowed in the number
-                    // In the future, see if we can also accept exponents here
-                    break;
-                }
+                        if(u_def[i]=='\'') {
+                            // Do nothing, but accept it as a separator
+                        }
+                        else {
+                        // No other chars allowed in the number
+                        // In the future, see if we can also accept exponents here
+                        break;
+                        }
+                    }
                 }
             }
             ++i;
@@ -187,7 +424,7 @@ struct UnitDefinition {
         size_t tokEnd=i;
         int64_t expnum=1;
         int64_t expden=1;
-        while(i<(M-1)) {
+        while(i<(u_defLen-1)) {
             if(u_def[i]=='*' || u_def[i]=='-') {
                 // This is a multiplication
                 if(lastTokenWasParen) {
@@ -314,10 +551,10 @@ struct UnitDefinition {
                                     ++i;
                                     bool haveNum=false;
                                     bool needDen = false;
-                                    bool haveParen=i<(M-1) && u_def[i]=='(';
+                                    bool haveParen=i<(u_defLen-1) && u_def[i]=='(';
                                     int64_t num=0;
                                     int64_t den=0;
-                                    while(i<(M-1)) {
+                                    while(i<(u_defLen-1)) {
                                         if(u_def[i]>='0'&&u_def[i]<='9') {
                                             if(!haveNum) {
                                                 num*=10;
@@ -400,9 +637,9 @@ struct UnitDefinition {
             lastTokenWasParen=false;
         } else {
             // Did we have an open token?
-            if(i>tokStart && tokStart!=M-1) {
+            if(i>tokStart && tokStart!=u_defLen-1) {
                 tokEnd=i;
-                if(i==M)
+                if(i==u_defLen)
                     tokEnd--;
                 // Consume the token
                 allTokens[nTokens]={tokStart,tokEnd,expnum,expden};
@@ -417,7 +654,7 @@ struct UnitDefinition {
         error_index=0;
         if(nParen!=0) {
             error_state=UnitError::BadParenthesis;
-            error_index=M-1;
+            error_index=u_defLen-1;
         }
 
         for(auto i=0;i<nTokens;++i)
@@ -452,10 +689,11 @@ struct UnitDefinition {
     // Min operations with units, all create new UnitDefinition objects and are strictly consteval
 
     // Inverse of a unit U^(-1)
-    _CONSTEVAL_ UnitDefinition invert() const {
+    _ALWAYS_CONSTEXPR_ UnitDefinition invert() const {
         UnitDefinition result=*this;
         result.value_ip = value_den;
         result.value_den = value_ip;
+        result.value_exp = -value_exp;
         for(size_t i=0;i<maxTokens;++i) {
             result.definition[i].expNum=-result.definition[i].expNum;
             if(definition[i].tokStart==definition[i].tokEnd) break;
@@ -464,13 +702,13 @@ struct UnitDefinition {
     }
 
     // Divide two different units
-    _CONSTEVAL_ UnitDefinition divide(const UnitDefinition& other) const {
+    _ALWAYS_CONSTEXPR_ UnitDefinition divide(const UnitDefinition& other) const {
         UnitDefinition inverse = other.invert();
         return multiply(inverse);
     }
 
     // Multiply two different units
-    _CONSTEVAL_ UnitDefinition multiply(const UnitDefinition& other) const {
+    _ALWAYS_CONSTEXPR_ UnitDefinition multiply(const UnitDefinition& other) const {
         UnitDefinition result = *this;
 
         // We'll need to add to the definition string to keep the token strings, find the end
@@ -565,7 +803,7 @@ struct UnitDefinition {
     }
 
     // Apply a fractional exponent to a unit
-    _CONSTEVAL_ UnitDefinition pow(int64_t expNum, int64_t expDen) const {
+    _ALWAYS_CONSTEXPR_ UnitDefinition pow(int64_t expNum, int64_t expDen) const {
         UnitDefinition result = *this;
         if(expDen==1) {
             // TODO: Watch for integer overflow here! Even though unit exponents tend to be small numbers, the integer constant can be a big number
@@ -597,10 +835,10 @@ struct UnitDefinition {
     // are possible. This produces an equivalent complex unit where all units were
     // reduced to base units
     // Defined outside of the class in order to have the entire unit definition list
-    _CONSTEVAL_ UnitDefinition simplify() const;
+    _ALWAYS_CONSTEXPR_ UnitDefinition simplify() const;
 
     // Creates a unit with a single unit token and exponent, taken from the current object
-    _CONSTEVAL_ UnitDefinition extractToken(size_t index) const {
+    _ALWAYS_CONSTEXPR_ UnitDefinition extractToken(size_t index) const {
         UnitDefinition result;
         result.definition[0]=definition[index];
         size_t tokenLen=definition[index].tokEnd-definition[index].tokStart;
@@ -615,7 +853,7 @@ struct UnitDefinition {
 
     // Update the text for the unit definition after a unit was operated upon
     // Uses the list of tokens and exponents to recreate the string.
-    _CONSTEVAL_ UnitDefinition update() const {
+    _ALWAYS_CONSTEXPR_ UnitDefinition update() const {
         // Rebuild the u_def string based off the token list and exponents
         // TODO
         UnitDefinition result;
@@ -762,6 +1000,7 @@ struct UnitDefinition {
     // Definition of the unit as text: use "1" for base units, or a proper definition in terms of other units for
     // derived units
     char u_def[maxDefinitionLength]={};
+
     size_t u_defLen = 0;
     // The numerical value of the definition, expressed as a fraction and a base-10 exponent: numerator/denominator * 10^exponent
     int64_t value_ip;
@@ -796,7 +1035,7 @@ struct UnitDefinition {
 // removed because the addition results in a zero exponent
 // becoming "25.4^2/1000^2"
 
-_CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
+_ALWAYS_CONSTEXPR_ UnitDefinition UnitDefinition::simplify() const
 {
     UnitDefinition result=*this;
 
@@ -820,15 +1059,21 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
                 size_t namestart=allUnits[j].u_name[0]=='?'? 1:0;
                 isAMatch=true;
                 // Compare the name
+                if(allUnits[j].u_name[namestart+tokenLen]==0) {
                 for(size_t k=0;k<maxTokenLength && result.definition[i].tokStart+k<result.definition[i].tokEnd;++k) {
                     if(result.u_def[result.definition[i].tokStart+k]!=allUnits[j].u_name[namestart+k]) {
                         isAMatch=false;
                         break;
                     }
                 }
+                }
+                else {
+                    isAMatch = false;
+                }
                 if(isAMatch) {
-                    // Only replace if it's a derived unit
-                    if(allUnits[j].definition[0].tokStart==allUnits[j].definition[0].tokEnd) {
+                    // Only replace if it's a derived unit AND it doesn't start with '#'
+                    // # is used for numerical constants = non-dimensional units that are NOT base units and must be replaced immediately
+                    if(allUnits[j].definition[0].tokStart==allUnits[j].definition[0].tokEnd && allUnits[j].u_name[0]!='#') {
                         // This is a base unit, do NOT replace
                         isAMatch=false;
                         break;
@@ -839,6 +1084,7 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
                         // And multiply it to our result
                         expanded = expanded.multiply(replacement);
                         expansionHappened=true;
+                        break;
                     }
                 } else {
                     // If this unit supports SI prefixes, we need to do a second comparison
@@ -947,7 +1193,7 @@ _CONSTEVAL_ UnitDefinition UnitDefinition::simplify() const
 }
 
 template<size_t N>
-_CONSTEVAL_ auto to_UTxt(const UnitDefinition def)
+_ALWAYS_CONSTEXPR_ auto to_UTxt(const UnitDefinition def)
 {
     char result[N]{};
     std::copy_n(def.u_def, N, result);
@@ -959,24 +1205,30 @@ _CONSTEVAL_ auto to_UTxt(const UnitDefinition def)
 // ********************************************************************************************************************
 // ********************************************************************************************************************
 
+
+#ifdef RUNTIME_COMPONENT
+class RQty;
+#endif
+
+
 // This is the main 'Quantity' class, with a string as a template argument
 // that represents the unit definition
 template<UTxt U>
 class Qty {
 public:
     // Default constructor creates the non-dimensional number 0.0
-    _CONSTEXPR_ inline Qty() : number(0.0) {}
+    _ALWAYS_CONSTEXPR_ inline Qty() : number(0.0) {}
     // Constructor with an integer number
-    _CONSTEXPR_ inline Qty(int64_t _value) : number((double)_value) {}
+    _ALWAYS_CONSTEXPR_ inline Qty(int64_t _value) : number((double)_value) {}
     // Constructor with a floating point number
-    _CONSTEXPR_ inline Qty(double _value) : number(_value) {}
+    _ALWAYS_CONSTEXPR_ inline Qty(double _value) : number(_value) {}
     // Constructor for temporaries
-    _CONSTEXPR_ inline Qty(long double _value) : number(_value) {}
+    _ALWAYS_CONSTEXPR_ inline Qty(long double _value) : number(_value) {}
 
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template<UTxt V>
-    _CONSTEVAL_ long double conversionFactorTo(const Qty<V>&) const {
+    _ALWAYS_CONSTEXPR_ inline long double conversionFactorTo(const Qty<V>&) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
         // k*U = k*V * (expand(U)/expand(V))
@@ -1027,7 +1279,7 @@ public:
 
     // Generic unit conversion operator, _CONSTEXPR_ will be used automatically
     template<UTxt V>
-    _CONSTEXPR_ operator Qty<V>() const {
+    _CONSTEXPR_ inline operator Qty<V>() const {
         // Create guaranteed _CONSTEXPR_ units for source and destination
         _CONSTEXPR_ Qty<V> unitV{1.0};
         _CONSTEXPR_ Qty<U> unitU{1.0};
@@ -1046,7 +1298,7 @@ public:
     // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
     // This is done to guarantee that adding with += operations do not change the unit of the result
     template <UTxt V>
-    Qty<U>& operator+=(const Qty<V>& rhs) {
+    inline Qty<U>& operator+=(const Qty<V>& rhs) {
         const auto convFactor = rhs.conversionFactorTo(*this);
         number += rhs.number * convFactor;
         return *this;
@@ -1055,19 +1307,19 @@ public:
     // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
     // This is done to guarantee that adding with += operations do not change the unit of the result
     template <UTxt V>
-    Qty<U>& operator-=(const Qty<V>& rhs) {
+    inline Qty<U>& operator-=(const Qty<V>& rhs) {
         const auto convFactor = rhs.conversionFactorTo(*this);
         number -= rhs.number * convFactor;
         return *this;
     }
 
     // Multiplication w/assignment can only exist with a
-    Qty<U>& operator*=(double rhs) {
+    inline Qty<U>& operator*=(double rhs) {
         number *= rhs;
         return *this;
     }
 
-    Qty<U>& operator/=(double rhs) {
+    inline Qty<U>& operator/=(double rhs) {
         number *= rhs;
         return *this;
     }
@@ -1085,7 +1337,26 @@ public:
     friend _CONSTEXPR_ auto operator/(const Qty<W>& lhs, const Qty<V>& rhs);
 
 #ifdef RUNTIME_COMPONENT
+
     friend class RQty;
+
+    operator RQty() const;
+
+    template <UTxt V>
+    friend inline auto operator*(const RQty& lhs, const Qty<V>& rhs);
+    template <UTxt V>
+    friend inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
+
+    template <UTxt V>
+    friend inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
+    template <UTxt V>
+    friend inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
+
+    template <UTxt V>
+    friend auto operator+(const RQty& lhs, const Qty<V>& rhs);
+    template <UTxt V>
+    friend auto operator-(const RQty& lhs, const Qty<V>& rhs);
+
 #endif
 
 private:
@@ -1127,10 +1398,10 @@ template <UTxt U, UTxt V>
 _CONSTEXPR_ auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
-    _CONSTEXPR_ Qty<U> lhsUnit{1.0};
-    _CONSTEXPR_ Qty<V> rhsUnit{1.0};
-    _CONSTEXPR_ auto finalUnit = lhsUnit.unitDef.multiply(rhsUnit.unitDef).update();
-    constexpr auto finalUnitDefinition = to_UTxt<finalUnit.u_defLen>(finalUnit);
+    _ALWAYS_CONSTEXPR_ Qty<U> lhsUnit{1.0};
+    _ALWAYS_CONSTEXPR_ Qty<V> rhsUnit{1.0};
+    _ALWAYS_CONSTEXPR_ auto finalUnit = lhsUnit.unitDef.multiply(rhsUnit.unitDef).update();
+    _ALWAYS_CONSTEXPR_ auto finalUnitDefinition = to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() * rhs.value();
     return Qty<finalUnitDefinition>{finalvalue};
@@ -1190,6 +1461,7 @@ _CONSTEXPR_ Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
 #ifdef RUNTIME_COMPONENT
 
 #include <stdexcept>
+#include <string>
 
 class RQty {
 public:
@@ -1197,13 +1469,17 @@ public:
     inline RQty() : number(0.0), unitDef() {}
     // Constructor with an integer number
     template<size_t N>
-    inline RQty(int64_t _value, UTxt<N> _unit) : number((double)_value), unitDef(_unit) {}
+    inline RQty(int64_t _value, const char (&_unit)[N]) : number((double)_value), unitDef("",_unit) {}
     // Constructor with a floating point number
     template<size_t N>
-    inline RQty(double _value, UTxt<N> _unit) : number(_value), unitDef(_unit) {}
+    inline RQty(double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
     // Constructor for temporaries
     template<size_t N>
-    inline RQty(long double _value, UTxt<N> _unit) : number(_value), unitDef(_unit) {}
+    inline RQty(long double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
+
+    inline RQty(int64_t _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
+    inline RQty(double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
+    inline RQty(long double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
 private:
     // Constructor used only internally
     inline RQty(double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
@@ -1389,15 +1665,7 @@ public:
         number += rhs.number * convFactor;
         return *this;
     }
-    RQty& operator+=(const double rhs) {
-        // We'll only allow this if the destination unit is compattible with nondimensional values
-        constexpr Qty<""> nonDimensional{1.0};
-        // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
-        const auto convFactor = conversionFactorFrom(nonDimensional);
-        number += rhs * convFactor;
-        return *this;
-    }
-    RQty& operator+=(const int64_t rhs) {
+    RQty& operator+=(const long double rhs) {
         // We'll only allow this if the destination unit is compattible with nondimensional values
         constexpr Qty<""> nonDimensional{1.0};
         // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
@@ -1417,15 +1685,7 @@ public:
         number -= rhs.number * convFactor;
         return *this;
     }
-    inline RQty& operator-=(const double rhs) {
-        // We'll only allow this if the destination unit is compattible with nondimensional values
-        constexpr Qty<""> nonDimensional{1.0};
-        // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
-        const auto convFactor = conversionFactorFrom(nonDimensional);
-        number -= rhs * convFactor;
-        return *this;
-    }
-    inline RQty& operator-=(const int64_t rhs) {
+    inline RQty& operator-=(const long double rhs) {
         // We'll only allow this if the destination unit is compattible with nondimensional values
         constexpr Qty<""> nonDimensional{1.0};
         // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
@@ -1435,11 +1695,7 @@ public:
     }
 
     // Multiplication w/assignment
-    inline RQty& operator*=(double rhs) {
-        number *= rhs;
-        return *this;
-    }
-    inline RQty& operator*=(int64_t rhs) {
+    inline RQty& operator*=(long double rhs) {
         number *= rhs;
         return *this;
     }
@@ -1458,14 +1714,11 @@ public:
     }
 
     // Division w/assignment
-    inline RQty& operator/=(double rhs) {
+    inline RQty& operator/=(long double rhs) {
         number /= rhs;
         return *this;
     }
-    inline RQty& operator/=(int64_t rhs) {
-        number /= rhs;
-        return *this;
-    }
+
     inline RQty& operator/=(const RQty& rhs) {
         auto finalUnit = unitDef.divide(rhs.unitDef).update();
         unitDef = finalUnit;
@@ -1490,17 +1743,15 @@ public:
     friend inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
     friend inline auto operator*(const RQty& lhs, const RQty& rhs);
     friend inline auto operator*(const long double lhs, const RQty& rhs);
-    friend inline auto operator*(const double lhs, const RQty& rhs);
-    friend inline auto operator*(const int64_t lhs, const RQty& rhs);
     friend inline auto operator*(const RQty& lhs, const long double rhs);
-    friend inline auto operator*(const RQty& lhs, const double rhs);
-    friend inline auto operator*(const RQty& lhs, const int64_t rhs);
 
     template <UTxt V>
     friend inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
     template <UTxt V>
     friend inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
     friend inline auto operator/(const RQty& lhs, const RQty& rhs);
+    friend inline auto operator/(const long double lhs, const RQty& rhs);
+    friend inline auto operator/(const RQty& lhs, const long double rhs);
 
     template <UTxt V>
     friend auto operator+(const RQty& lhs, const Qty<V>& rhs);
@@ -1508,6 +1759,9 @@ public:
     template <UTxt V>
     friend auto operator-(const RQty& lhs, const Qty<V>& rhs);
     friend auto operator-(const RQty& lhs, const RQty& rhs);
+
+    template<UTxt V>
+    friend class Qty;
 
 private:
 
@@ -1608,25 +1862,26 @@ inline auto operator*(const long double lhs, const RQty& rhs) {
     long double finalvalue = lhs * rhs.value();
     return RQty{finalvalue,rhs.unitDef};
 }
-inline auto operator*(const double lhs, const RQty& rhs) {
-    long double finalvalue = lhs * rhs.value();
-    return RQty{finalvalue,rhs.unitDef};
-}
-inline auto operator*(const int64_t lhs, const RQty& rhs) {
-    long double finalvalue = lhs * rhs.value();
-    return RQty{finalvalue,rhs.unitDef};
-}
 inline auto operator*(const RQty& lhs, const long double rhs) {
     long double finalvalue = rhs * lhs.value();
     return RQty{finalvalue,lhs.unitDef};
 }
-inline auto operator*(const RQty& lhs, const double rhs) {
-    long double finalvalue = rhs * lhs.value();
+// Division operator by a non-dimensional scalar
+// Simply preserves (or inverts, depending on order of arguments)
+inline auto operator/(const long double lhs, const RQty& rhs) {
+    auto finalUnit = rhs.unitDef.invert().update();
+    long double finalvalue = lhs / rhs.value();
+    return RQty{finalvalue,finalUnit};
+}
+inline auto operator/(const RQty& lhs, const long double rhs) {
+    long double finalvalue = lhs.value() / rhs;
     return RQty{finalvalue,lhs.unitDef};
 }
-inline auto operator*(const RQty& lhs, const int64_t rhs) {
-    long double finalvalue = rhs * lhs.value();
-    return RQty{finalvalue,lhs.unitDef};
+
+template<UTxt U>
+inline Qty<U>::operator RQty() const {
+    // Create guaranteed _CONSTEXPR_ units for source and destination
+    return RQty{number,unitDef};
 }
 
 #endif
