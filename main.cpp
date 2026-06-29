@@ -123,7 +123,9 @@ int main()
 
     // Check if the constants-as-units work
 
-    std::cout << "cos 180 degrees = " << cosUnit(180*_("°")) << std::endl;
+    auto angle = 180*_("°");
+
+    std::cout << "cos 180 degrees = " << cosUnit(angle) << std::endl;
 
     return 0;
 }

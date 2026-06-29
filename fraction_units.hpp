@@ -10,11 +10,10 @@
 
 #define _ALWAYS_CONSTEXPR_ constexpr
 //constexpr
-#define _CONSTEXPR_
+#define _CONSTEXPR_ constexpr
 
 // This is a hack to create constants in a user-friendly way, I don't like it much
 #define _(TXT) Qty< TXT >{1.0}
-
 
 enum UnitError {
     NoError=0,
@@ -51,7 +50,7 @@ struct UTxt {
 };
 
 // Basic math because we cannot use library functions within consteval
-_ALWAYS_CONSTEXPR_ int64_t gcd(int64_t a, int64_t b)
+inline _ALWAYS_CONSTEXPR_ int64_t gcd(int64_t a, int64_t b)
 {
     while(b) {
         auto t=b;
@@ -61,7 +60,7 @@ _ALWAYS_CONSTEXPR_ int64_t gcd(int64_t a, int64_t b)
     return a;
 }
 
-_ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,int64_t exp)
+inline _ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,int64_t exp)
 {
     int64_t result=number;
     --exp;
@@ -73,7 +72,7 @@ _ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,int64_t exp)
     return result;
 }
 
-_ALWAYS_CONSTEXPR_ int64_t intabs(int64_t number) {
+inline _ALWAYS_CONSTEXPR_ int64_t intabs(int64_t number) {
     return (number<0)? -number:number;
 }
 
@@ -113,7 +112,7 @@ struct integer128 {
         return (a.hiword&(1ULL<<63))? neg128(a):a;
         }
 
-    static _ALWAYS_CONSTEXPR_ integer128 mul64x64(int64_t a, int64_t b)
+    static inline _ALWAYS_CONSTEXPR_ integer128 mul64x64(int64_t a, int64_t b)
     {
         auto sign = (b^a)>>63;
         if(a<0) a=-a;
@@ -134,7 +133,7 @@ struct integer128 {
         return result;
     }
 
-    static _ALWAYS_CONSTEXPR_ bool iszero128(integer128 a) { return (a.loword|a.hiword)==0; }
+    static inline _ALWAYS_CONSTEXPR_ bool iszero128(integer128 a) { return (a.loword|a.hiword)==0; }
 
     // LSL
     inline _ALWAYS_CONSTEXPR_ integer128 operator<<(int shift) {
@@ -279,7 +278,7 @@ struct integer128 {
 
 };
 
-_ALWAYS_CONSTEXPR_ integer128 gcd128(integer128 a, integer128 b)
+inline _ALWAYS_CONSTEXPR_ integer128 gcd128(integer128 a, integer128 b)
 {
     while(!integer128::iszero128(b)) {
         auto t=b;
@@ -289,7 +288,7 @@ _ALWAYS_CONSTEXPR_ integer128 gcd128(integer128 a, integer128 b)
     return a;
 }
 
-_ALWAYS_CONSTEXPR_ std::pair<int64_t,int64_t> addfraction(int64_t a_num,int64_t a_den, int64_t b_num, int64_t b_den)
+inline _ALWAYS_CONSTEXPR_ std::pair<int64_t,int64_t> addfraction(int64_t a_num,int64_t a_den, int64_t b_num, int64_t b_den)
 {
     integer128 numerator = integer128::add128(integer128::mul64x64(a_num, b_den) , integer128::mul64x64(b_num,a_den));
     integer128 denominator = integer128::mul64x64(a_den,b_den);
@@ -318,13 +317,13 @@ struct UnitDefinition {
     };
 
     // Default constructor creates the non-dimensional number 1.0
-    constexpr UnitDefinition() : u_name(""),u_def(""), value_ip(1),value_den(1),value_exp(0), error_state(NoError), error_index(0), definition({}) {}
+    inline constexpr UnitDefinition() : u_name(""),u_def(""), value_ip(1),value_den(1),value_exp(0), error_state(NoError), error_index(0), definition({}) {}
     // Constructor using a single string literal, creates a unit definition with no name
     template<size_t M>
-    constexpr UnitDefinition(const UTxt<M> U) : UnitDefinition("",U.value) {}
+    inline constexpr UnitDefinition(const UTxt<M> U) : UnitDefinition("",U.value) {}
     // Main constructor and parser, creates a unit definition from a name and a string
     template<size_t N, size_t M>
-    constexpr UnitDefinition(const char (&name)[N], const char (&defstring)[M]) {
+    inline constexpr UnitDefinition(const char (&name)[N], const char (&defstring)[M]) {
         std::copy_n(name, N, u_name);
         std::copy_n(defstring, M, u_def);
         u_defLen=M;
@@ -333,7 +332,7 @@ struct UnitDefinition {
 
 #ifdef RUNTIME_COMPONENT
 
-    constexpr UnitDefinition(const char *defstring, size_t len) {
+    inline constexpr UnitDefinition(const char *defstring, size_t len) {
         u_name[0]=0;
         std::copy_n(defstring, len, u_def);
         u_defLen=len;
@@ -343,7 +342,7 @@ struct UnitDefinition {
 #endif
     // Main parser of a unit definition. Extracts unit data from a definition string previously stored in
     // member u_def, with length u_defLen. Fills out all other members.
-    _ALWAYS_CONSTEXPR_ void parseUnit() {
+    inline _ALWAYS_CONSTEXPR_ void parseUnit() {
         bool haveDen = false;
         // Numerical part or a unit is composed of 3 64-bit integers: (numerator/denominator)*10^exponent
         // This provides same of better range than any double precision, while using integer arithmetic during compile time
@@ -689,7 +688,7 @@ struct UnitDefinition {
     // Min operations with units, all create new UnitDefinition objects and are strictly consteval
 
     // Inverse of a unit U^(-1)
-    _ALWAYS_CONSTEXPR_ UnitDefinition invert() const {
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition invert() const {
         UnitDefinition result=*this;
         result.value_ip = value_den;
         result.value_den = value_ip;
@@ -702,13 +701,13 @@ struct UnitDefinition {
     }
 
     // Divide two different units
-    _ALWAYS_CONSTEXPR_ UnitDefinition divide(const UnitDefinition& other) const {
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition divide(const UnitDefinition& other) const {
         UnitDefinition inverse = other.invert();
         return multiply(inverse);
     }
 
     // Multiply two different units
-    _ALWAYS_CONSTEXPR_ UnitDefinition multiply(const UnitDefinition& other) const {
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition multiply(const UnitDefinition& other) const {
         UnitDefinition result = *this;
 
         // We'll need to add to the definition string to keep the token strings, find the end
@@ -803,7 +802,7 @@ struct UnitDefinition {
     }
 
     // Apply a fractional exponent to a unit
-    _ALWAYS_CONSTEXPR_ UnitDefinition pow(int64_t expNum, int64_t expDen) const {
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition pow(int64_t expNum, int64_t expDen) const {
         UnitDefinition result = *this;
         if(expDen==1) {
             // TODO: Watch for integer overflow here! Even though unit exponents tend to be small numbers, the integer constant can be a big number
@@ -835,10 +834,10 @@ struct UnitDefinition {
     // are possible. This produces an equivalent complex unit where all units were
     // reduced to base units
     // Defined outside of the class in order to have the entire unit definition list
-    _ALWAYS_CONSTEXPR_ UnitDefinition simplify() const;
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition simplify() const;
 
     // Creates a unit with a single unit token and exponent, taken from the current object
-    _ALWAYS_CONSTEXPR_ UnitDefinition extractToken(size_t index) const {
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition extractToken(size_t index) const {
         UnitDefinition result;
         result.definition[0]=definition[index];
         size_t tokenLen=definition[index].tokEnd-definition[index].tokStart;
@@ -853,7 +852,7 @@ struct UnitDefinition {
 
     // Update the text for the unit definition after a unit was operated upon
     // Uses the list of tokens and exponents to recreate the string.
-    _ALWAYS_CONSTEXPR_ UnitDefinition update() const {
+    inline _ALWAYS_CONSTEXPR_ UnitDefinition update() const {
         // Rebuild the u_def string based off the token list and exponents
         // TODO
         UnitDefinition result;
@@ -1015,8 +1014,6 @@ struct UnitDefinition {
     std::array<tokendata,maxTokens> definition;
 };
 
-
-
 // Now we include the definition of all units here
 #include "allunits.hpp"
 
@@ -1035,7 +1032,7 @@ struct UnitDefinition {
 // removed because the addition results in a zero exponent
 // becoming "25.4^2/1000^2"
 
-_ALWAYS_CONSTEXPR_ UnitDefinition UnitDefinition::simplify() const
+inline _ALWAYS_CONSTEXPR_ UnitDefinition UnitDefinition::simplify() const
 {
     UnitDefinition result=*this;
 
@@ -1193,7 +1190,7 @@ _ALWAYS_CONSTEXPR_ UnitDefinition UnitDefinition::simplify() const
 }
 
 template<size_t N>
-_ALWAYS_CONSTEXPR_ auto to_UTxt(const UnitDefinition def)
+inline _ALWAYS_CONSTEXPR_ auto to_UTxt(const UnitDefinition def)
 {
     char result[N]{};
     std::copy_n(def.u_def, N, result);
@@ -1298,7 +1295,7 @@ public:
     // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
     // This is done to guarantee that adding with += operations do not change the unit of the result
     template <UTxt V>
-    inline Qty<U>& operator+=(const Qty<V>& rhs) {
+    _CONSTEXPR_ inline Qty<U>& operator+=(const Qty<V>& rhs) {
         const auto convFactor = rhs.conversionFactorTo(*this);
         number += rhs.number * convFactor;
         return *this;
@@ -1307,25 +1304,25 @@ public:
     // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
     // This is done to guarantee that adding with += operations do not change the unit of the result
     template <UTxt V>
-    inline Qty<U>& operator-=(const Qty<V>& rhs) {
+    _CONSTEXPR_ inline Qty<U>& operator-=(const Qty<V>& rhs) {
         const auto convFactor = rhs.conversionFactorTo(*this);
         number -= rhs.number * convFactor;
         return *this;
     }
 
     // Multiplication w/assignment can only exist with a
-    inline Qty<U>& operator*=(double rhs) {
+    _CONSTEXPR_ inline Qty<U>& operator*=(double rhs) {
         number *= rhs;
         return *this;
     }
 
-    inline Qty<U>& operator/=(double rhs) {
+    _CONSTEXPR_ inline Qty<U>& operator/=(double rhs) {
         number *= rhs;
         return *this;
     }
 
-    inline long double value() const { return number; }
-    constexpr const char *unit() { return unitDef.u_def; }
+    _CONSTEXPR_ inline long double value() const { return number; }
+    _CONSTEXPR_ const char *unit() { return unitDef.u_def; }
 
     template<UTxt V>
     friend class Qty;
@@ -1340,22 +1337,22 @@ public:
 
     friend class RQty;
 
-    operator RQty() const;
+    _CONSTEXPR_ operator RQty() const;
 
     template <UTxt V>
-    friend inline auto operator*(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator*(const RQty& lhs, const Qty<V>& rhs);
     template <UTxt V>
-    friend inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
 
     template <UTxt V>
-    friend inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
     template <UTxt V>
-    friend inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
 
     template <UTxt V>
-    friend auto operator+(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator+(const RQty& lhs, const Qty<V>& rhs);
     template <UTxt V>
-    friend auto operator-(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator-(const RQty& lhs, const Qty<V>& rhs);
 
 #endif
 
@@ -1375,14 +1372,14 @@ private:
 // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
 // This is done to guarantee that adding with += operations do not change the unit of the result
 template <UTxt U, UTxt V>
-_CONSTEXPR_ Qty<U> operator+(const Qty<U>& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline Qty<U> operator+(const Qty<U>& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     long double finalvalue = lhs.value() + rhs.value() * convFactor;
     return Qty<U>{finalvalue};
 }
 
 template <UTxt U, UTxt V>
-_CONSTEXPR_ Qty<U> operator-(const Qty<U>& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline Qty<U> operator-(const Qty<U>& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     long double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<U>{finalvalue};
@@ -1395,7 +1392,7 @@ _CONSTEXPR_ Qty<U> operator-(const Qty<U>& lhs, const Qty<V>& rhs) {
 // For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
 // treated as a different unit)
 template <UTxt U, UTxt V>
-_CONSTEXPR_ auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     _ALWAYS_CONSTEXPR_ Qty<U> lhsUnit{1.0};
@@ -1408,7 +1405,7 @@ _CONSTEXPR_ auto operator*(const Qty<U>& lhs, const Qty<V>& rhs) {
 }
 
 template <UTxt U, UTxt V>
-_CONSTEXPR_ auto operator/(const Qty<U>& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline auto operator/(const Qty<U>& lhs, const Qty<V>& rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     _CONSTEXPR_ Qty<U> lhsUnit{1.0};
@@ -1425,21 +1422,13 @@ _CONSTEXPR_ auto operator/(const Qty<U>& lhs, const Qty<V>& rhs) {
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UTxt V>
-_CONSTEXPR_ Qty<V> operator*(const long double lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline Qty<V> operator*(const long double lhs, const Qty<V>& rhs) {
     long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
 template <UTxt V>
-_CONSTEXPR_ Qty<V> operator*(const double lhs, const Qty<V>& rhs) {
-    long double finalvalue = lhs * rhs.value();
-    return Qty<V>{finalvalue};
-}
-
-// Multiplication operator by a non-dimensional scalar
-// Simply preserves the original unit
-template <UTxt V>
-_CONSTEXPR_ Qty<V> operator*(const int64_t lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline Qty<V> operator*(const double lhs, const Qty<V>& rhs) {
     long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
@@ -1447,7 +1436,15 @@ _CONSTEXPR_ Qty<V> operator*(const int64_t lhs, const Qty<V>& rhs) {
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UTxt V>
-_CONSTEXPR_ Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline Qty<V> operator*(const int64_t lhs, const Qty<V>& rhs) {
+    long double finalvalue = lhs * rhs.value();
+    return Qty<V>{finalvalue};
+}
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_CONSTEXPR_ inline Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
     long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
@@ -1466,30 +1463,30 @@ _CONSTEXPR_ Qty<V> operator*(const int lhs, const Qty<V>& rhs) {
 class RQty {
 public:
     // Default constructor creates the non-dimensional number 0.0
-    inline RQty() : number(0.0), unitDef() {}
+    _CONSTEXPR_ inline RQty() : number(0.0), unitDef() {}
     // Constructor with an integer number
     template<size_t N>
-    inline RQty(int64_t _value, const char (&_unit)[N]) : number((double)_value), unitDef("",_unit) {}
+    _CONSTEXPR_ inline RQty(int64_t _value, const char (&_unit)[N]) : number((double)_value), unitDef("",_unit) {}
     // Constructor with a floating point number
     template<size_t N>
-    inline RQty(double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
+    _CONSTEXPR_ inline RQty(double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
     // Constructor for temporaries
     template<size_t N>
-    inline RQty(long double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
+    _CONSTEXPR_ inline RQty(long double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
 
-    inline RQty(int64_t _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
-    inline RQty(double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
-    inline RQty(long double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
+    _CONSTEXPR_ inline RQty(int64_t _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
+    _CONSTEXPR_ inline RQty(double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
+    _CONSTEXPR_ inline RQty(long double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
 private:
     // Constructor used only internally
-    inline RQty(double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
+    _CONSTEXPR_ inline RQty(double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
     // Constructor used only internally
-    inline RQty(long double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
+    _CONSTEXPR_ inline RQty(long double _value, const UnitDefinition& _udef) : number(_value), unitDef(_udef) {}
 
 public:
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
-    inline long double conversionFactorTo(const RQty& unitTo) const {
+    _CONSTEXPR_ inline long double conversionFactorTo(const RQty& unitTo) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
         // k*U = k*V * (expand(U)/expand(V))
@@ -1537,7 +1534,7 @@ public:
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template<UTxt V>
-    inline long double conversionFactorTo(const Qty<V>& unitTo) const {
+    _CONSTEXPR_ inline long double conversionFactorTo(const Qty<V>& unitTo) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
         // k*U = k*V * (expand(U)/expand(V))
@@ -1585,7 +1582,7 @@ public:
     // Calculate a multiplicative conversion factor to convert from
     // the given unit to the current unit
     template<UTxt V>
-    inline long double conversionFactorFrom(const Qty<V>& unitFrom) const {
+    _CONSTEXPR_ inline long double conversionFactorFrom(const Qty<V>& unitFrom) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
         // k*U = k*V * (expand(U)/expand(V))
@@ -1633,7 +1630,7 @@ public:
 
     // Generic unit conversion operator
     template<UTxt V>
-    _CONSTEXPR_ operator Qty<V>() const {
+    _CONSTEXPR_ inline operator Qty<V>() const {
         // Create guaranteed _CONSTEXPR_ units for source and destination
         _CONSTEXPR_ Qty<V> unitV{1.0};
         // Calculate a conversion factor
@@ -1646,7 +1643,7 @@ public:
     // Operations with other run time units
     // Assignment will not CONVERT units, will copy the units of the other object
     // To convert to a fixed set of units, assign it to a Qty<U>
-    RQty& operator=(const RQty& rhs) {
+    _CONSTEXPR_ inline RQty& operator=(const RQty& rhs) {
         number = rhs.number;
         unitDef = rhs.unitDef;
         return *this;
@@ -1655,17 +1652,17 @@ public:
     // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
     // This is done to guarantee that adding with += operations do not change the unit of the result
     template <UTxt V>
-    RQty& operator+=(const Qty<V>& rhs) {
+    _CONSTEXPR_ inline RQty& operator+=(const Qty<V>& rhs) {
         const auto convFactor = conversionFactorFrom(rhs);
         number += rhs.number * convFactor;
         return *this;
     }
-    RQty& operator+=(const RQty& rhs) {
+    _CONSTEXPR_ inline RQty& operator+=(const RQty& rhs) {
         const auto convFactor = rhs.conversionFactorTo(*this);
         number += rhs.number * convFactor;
         return *this;
     }
-    RQty& operator+=(const long double rhs) {
+    _CONSTEXPR_ inline RQty& operator+=(const long double rhs) {
         // We'll only allow this if the destination unit is compattible with nondimensional values
         constexpr Qty<""> nonDimensional{1.0};
         // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
@@ -1675,17 +1672,17 @@ public:
     }
 
     template <UTxt V>
-    inline RQty& operator-=(const Qty<V>& rhs) {
+    _CONSTEXPR_ inline RQty& operator-=(const Qty<V>& rhs) {
         const auto convFactor = conversionFactorFrom(rhs);
         number -= rhs.number * convFactor;
         return *this;
     }
-    inline RQty& operator-=(const RQty& rhs) {
+    _CONSTEXPR_ inline RQty& operator-=(const RQty& rhs) {
         const auto convFactor = rhs.conversionFactorTo(*this);
         number -= rhs.number * convFactor;
         return *this;
     }
-    inline RQty& operator-=(const long double rhs) {
+    _CONSTEXPR_ inline RQty& operator-=(const long double rhs) {
         // We'll only allow this if the destination unit is compattible with nondimensional values
         constexpr Qty<""> nonDimensional{1.0};
         // Conversion will throw "Incompatible units" error unless our unit is non-dimensional
@@ -1695,18 +1692,18 @@ public:
     }
 
     // Multiplication w/assignment
-    inline RQty& operator*=(long double rhs) {
+    _CONSTEXPR_ inline RQty& operator*=(long double rhs) {
         number *= rhs;
         return *this;
     }
-    inline RQty& operator*=(const RQty& rhs) {
+    _CONSTEXPR_ inline RQty& operator*=(const RQty& rhs) {
         auto finalUnit = unitDef.multiply(rhs.unitDef).update();
         unitDef = finalUnit;
         number *= rhs.value();
         return *this;
     }
     template<UTxt V>
-    inline RQty& operator*=(const Qty<V>& rhs) {
+    _CONSTEXPR_ inline RQty& operator*=(const Qty<V>& rhs) {
         auto finalUnit = unitDef.multiply(rhs.unitDef).update();
         unitDef = finalUnit;
         number *= rhs.value();
@@ -1714,19 +1711,19 @@ public:
     }
 
     // Division w/assignment
-    inline RQty& operator/=(long double rhs) {
+    _CONSTEXPR_ inline RQty& operator/=(long double rhs) {
         number /= rhs;
         return *this;
     }
 
-    inline RQty& operator/=(const RQty& rhs) {
+    _CONSTEXPR_ inline RQty& operator/=(const RQty& rhs) {
         auto finalUnit = unitDef.divide(rhs.unitDef).update();
         unitDef = finalUnit;
         number /= rhs.value();
         return *this;
     }
     template<UTxt V>
-    inline RQty& operator/=(const Qty<V>& rhs) {
+    _CONSTEXPR_ inline RQty& operator/=(const Qty<V>& rhs) {
         auto finalUnit = unitDef.divide(rhs.unitDef).update();
         unitDef = finalUnit;
         number /= rhs.value();
@@ -1734,31 +1731,31 @@ public:
     }
 
 
-    inline long double value() const { return number; }
+    _CONSTEXPR_ inline long double value() const { return number; }
     const char *unit() { return unitDef.u_def; }
 
     template <UTxt V>
-    friend inline auto operator*(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator*(const RQty& lhs, const Qty<V>& rhs);
     template <UTxt V>
-    friend inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
-    friend inline auto operator*(const RQty& lhs, const RQty& rhs);
-    friend inline auto operator*(const long double lhs, const RQty& rhs);
-    friend inline auto operator*(const RQty& lhs, const long double rhs);
+    friend _CONSTEXPR_ inline auto operator*(const Qty<V>& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator*(const RQty& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator*(const long double lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator*(const RQty& lhs, const long double rhs);
 
     template <UTxt V>
-    friend inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator/(const RQty& lhs, const Qty<V>& rhs);
     template <UTxt V>
-    friend inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
-    friend inline auto operator/(const RQty& lhs, const RQty& rhs);
-    friend inline auto operator/(const long double lhs, const RQty& rhs);
-    friend inline auto operator/(const RQty& lhs, const long double rhs);
+    friend _CONSTEXPR_ inline auto operator/(const Qty<V>& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator/(const RQty& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator/(const long double lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator/(const RQty& lhs, const long double rhs);
 
     template <UTxt V>
-    friend auto operator+(const RQty& lhs, const Qty<V>& rhs);
-    friend auto operator+(const RQty& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator+(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator+(const RQty& lhs, const RQty& rhs);
     template <UTxt V>
-    friend auto operator-(const RQty& lhs, const Qty<V>& rhs);
-    friend auto operator-(const RQty& lhs, const RQty& rhs);
+    friend _CONSTEXPR_ inline auto operator-(const RQty& lhs, const Qty<V>& rhs);
+    friend _CONSTEXPR_ inline auto operator-(const RQty& lhs, const RQty& rhs);
 
     template<UTxt V>
     friend class Qty;
@@ -1773,36 +1770,36 @@ private:
 // Convention: Resulting unit of an addition or subtraction is always the unit of the left argument
 // This is done to guarantee that adding with += operations do not change the unit of the result
 template <UTxt V>
-auto operator+(const RQty& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline auto operator+(const RQty& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() + rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
 template <UTxt V>
-auto operator+(const Qty<V>& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator+(const Qty<V>& lhs, const RQty& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() + rhs.value() * convFactor;
     return Qty<V>{finalvalue};
 }
-auto operator+(const RQty& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator+(const RQty& lhs, const RQty& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() + rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
 
 template <UTxt V>
-auto operator-(const RQty& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline auto operator-(const RQty& lhs, const Qty<V>& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() - rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
 template <UTxt V>
-auto operator-(const Qty<V>& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator-(const Qty<V>& lhs, const RQty& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<V>{finalvalue};
 }
-auto operator-(const RQty& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator-(const RQty& lhs, const RQty& rhs) {
     const auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() - rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
@@ -1815,20 +1812,20 @@ auto operator-(const RQty& lhs, const RQty& rhs) {
 // For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
 // treated as a different unit)
 template <UTxt V>
-auto operator*(const RQty& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline auto operator*(const RQty& lhs, const Qty<V>& rhs) {
     auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue,finalUnit};
 }
 template <UTxt V>
-auto operator*(const Qty<V>& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator*(const Qty<V>& lhs, const RQty& rhs) {
     auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue,finalUnit};
 }
-auto operator*(const RQty& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator*(const RQty& lhs, const RQty& rhs) {
     auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() * rhs.value();
@@ -1836,20 +1833,20 @@ auto operator*(const RQty& lhs, const RQty& rhs) {
 }
 
 template <UTxt V>
-auto operator/(const RQty& lhs, const Qty<V>& rhs) {
+_CONSTEXPR_ inline auto operator/(const RQty& lhs, const Qty<V>& rhs) {
     auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() / rhs.value();
     return RQty{finalvalue,finalUnit};
 }
 template <UTxt V>
-auto operator/(const Qty<V>& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator/(const Qty<V>& lhs, const RQty& rhs) {
     auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue,finalUnit};
 }
-auto operator/(const RQty& lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator/(const RQty& lhs, const RQty& rhs) {
     auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
     long double finalvalue = lhs.value() / rhs.value();
@@ -1858,30 +1855,29 @@ auto operator/(const RQty& lhs, const RQty& rhs) {
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
-inline auto operator*(const long double lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator*(const long double lhs, const RQty& rhs) {
     long double finalvalue = lhs * rhs.value();
     return RQty{finalvalue,rhs.unitDef};
 }
-inline auto operator*(const RQty& lhs, const long double rhs) {
+_CONSTEXPR_ inline auto operator*(const RQty& lhs, const long double rhs) {
     long double finalvalue = rhs * lhs.value();
     return RQty{finalvalue,lhs.unitDef};
 }
 // Division operator by a non-dimensional scalar
 // Simply preserves (or inverts, depending on order of arguments)
-inline auto operator/(const long double lhs, const RQty& rhs) {
+_CONSTEXPR_ inline auto operator/(const long double lhs, const RQty& rhs) {
     auto finalUnit = rhs.unitDef.invert().update();
     long double finalvalue = lhs / rhs.value();
     return RQty{finalvalue,finalUnit};
 }
-inline auto operator/(const RQty& lhs, const long double rhs) {
+_CONSTEXPR_ inline auto operator/(const RQty& lhs, const long double rhs) {
     long double finalvalue = lhs.value() / rhs;
     return RQty{finalvalue,lhs.unitDef};
 }
 
 template<UTxt U>
-inline Qty<U>::operator RQty() const {
+_CONSTEXPR_ inline Qty<U>::operator RQty() const {
     // Create guaranteed _CONSTEXPR_ units for source and destination
     return RQty{number,unitDef};
 }
-
 #endif
