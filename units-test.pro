@@ -10,4 +10,4 @@ HEADERS += \
         allunits.hpp \
         fraction_units.hpp
 
-QMAKE_CXXFLAGS += -Og
+#QMAKE_CXXFLAGS += -Og

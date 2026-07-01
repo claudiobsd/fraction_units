@@ -127,5 +127,12 @@ int main()
 
     std::cout << "cos 180 degrees = " << cosUnit(angle) << std::endl;
 
+    // Test some greek letters
+
+    const RQty length(1,"µ");
+
+    Qty<"Å"> angstrom = length;
+
+    std::cout << "length in Å = " << angstrom.value() << "_Å" << std::endl;
     return 0;
 }

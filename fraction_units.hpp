@@ -1126,11 +1126,11 @@ inline _ALWAYS_CONSTEXPR_ UnitDefinition UnitDefinition::simplify() const
                         else {
                             // For Micro, we need to look for the Unicode symbol in UTF-8
                             // It can be U+03bc=={0xce, 0xbc} or U+00B5=={0xc2,0xb5}
-                            if(tokenLen>2 && (unsigned char)(result.u_def[newtokenStart])==0xc2 && (unsigned char)(result.u_def[newtokenStart])==0xbc) {
+                            if(tokenLen>2 && (unsigned char)(result.u_def[newtokenStart])==0xc2 && (unsigned char)(result.u_def[newtokenStart+1])==0xb5) {
                                 newtokenStart+=2;
                                 siPrefixExponent=-6;
                             }
-                            if(tokenLen>2 && (unsigned char)result.u_def[newtokenStart]==0xce && (unsigned char)result.u_def[newtokenStart]==0xb5) {
+                            if(tokenLen>2 && (unsigned char)result.u_def[newtokenStart]==0xce && (unsigned char)result.u_def[newtokenStart+1]==0xbc) {
                                 newtokenStart+=2;
                                 siPrefixExponent=-6;
                             }
@@ -1464,18 +1464,9 @@ class RQty {
 public:
     // Default constructor creates the non-dimensional number 0.0
     _CONSTEXPR_ inline RQty() : number(0.0), unitDef() {}
-    // Constructor with an integer number
-    template<size_t N>
-    _CONSTEXPR_ inline RQty(int64_t _value, const char (&_unit)[N]) : number((double)_value), unitDef("",_unit) {}
-    // Constructor with a floating point number
-    template<size_t N>
-    _CONSTEXPR_ inline RQty(double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
-    // Constructor for temporaries
     template<size_t N>
     _CONSTEXPR_ inline RQty(long double _value, const char (&_unit)[N]) : number(_value), unitDef("",_unit) {}
 
-    _CONSTEXPR_ inline RQty(int64_t _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
-    _CONSTEXPR_ inline RQty(double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
     _CONSTEXPR_ inline RQty(long double _value, const std::string& _unit) : number((double)_value), unitDef(_unit.c_str(),_unit.size()) {}
 private:
     // Constructor used only internally
