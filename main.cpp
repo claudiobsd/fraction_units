@@ -3,7 +3,6 @@
 
 #include "fraction_units.hpp"
 
-
 auto massFlow(const Qty<"kg/m^3"> density, const Qty<"m^2"> area, const Qty<"m/s"> velocity) {
     return density * area * velocity;
 }
