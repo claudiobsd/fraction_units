@@ -11,7 +11,7 @@ HEADERS += \
         fraction_units.hpp
 
 CONFIG(debug, debug|release) {
-QMAKE_CXXFLAGS += -Og
+QMAKE_CXXFLAGS += -O0
 }
 CONFIG(release, debug|release) {
 QMAKE_CXXFLAGS += -O3 -DNDEBUG

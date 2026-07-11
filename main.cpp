@@ -3,6 +3,8 @@
 
 #include "fraction_units.hpp"
 
+#include "external/test/include/acutest.h"
+
 auto massFlow(const Qty<"kg/m^3"> density, const Qty<"m^2"> area, const Qty<"m/s"> velocity) {
     return density * area * velocity;
 }
@@ -11,19 +13,267 @@ double cosUnit(const Qty<"r"> angle) {
     return std::cos(angle.value());
 }
 
-int main()
+void test_UnitDefinition_parser()
 {
     // Try creating a unit, then print all tokens and exponents
     UnitDefinition check("check","kg/ft^3");
 
-    std::cout << "Check = " << std::endl;
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    // kg
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    TEST_CHECK(check.definition[0].expNum==1);
+    // ft^-3
+    TEST_CHECK(check.definition[1].tokStart==3);
+    TEST_CHECK(check.definition[1].tokEnd==5);
+    TEST_CHECK(check.definition[1].expDen==1);
+    TEST_CHECK(check.definition[1].expNum==-3);
+    // Value = 1/1*10^0
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+}
 
-    for(size_t i=0;i<maxTokens;++i) {
-        if(check.definition[i].expDen==0)
-            break;
-        std::cout << "'" << std::string_view(check.u_def+check.definition[i].tokStart,check.u_def+check.definition[i].tokEnd) << "'^ " << check.definition[i].expNum << "/" << check.definition[i].expDen << std::endl;
-    }
+void test_UnitDefinition_parser_number()
+{
+    // Parse a simple number
+    UnitDefinition check("check","1.2345");
 
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+    // Value = 12345/1 * 10^-4
+    TEST_CHECK(check.value_ip==12345);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==-4);
+}
+
+void test_UnitDefinition_parser_number2()
+{
+    // Parse a number with denominator
+    UnitDefinition check("check","1.2345/567");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+    // Value = 12345/567 * 10^-4 but fraction should be simplified
+    // by dividing by 3
+    TEST_CHECK(check.value_ip==4115);
+    TEST_CHECK(check.value_den==189);
+    TEST_CHECK(check.value_exp==-4);
+}
+
+void test_UnitDefinition_parser_number3()
+{
+    // Parse a number, denominator is multiple of 10
+    UnitDefinition check("check","1.2345/500");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==2469);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==-6);
+}
+
+void test_UnitDefinition_parser_number4()
+{
+    // Parse a number, numerator is multiple of 10
+    UnitDefinition check("check","1.234500/567");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==4115);
+    TEST_CHECK(check.value_den==189);
+    TEST_CHECK(check.value_exp==-4);
+}
+
+void test_UnitDefinition_parser_number5()
+{
+    // Parse a number, numerator doesn't exist
+    UnitDefinition check("check","/567");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==567);
+    TEST_CHECK(check.value_exp==0);
+}
+
+void test_UnitDefinition_parser_number6()
+{
+    // Parse a number, denominator doesn't exist
+    UnitDefinition check("check","1.2345/");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==12345);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==-4);
+}
+
+void test_UnitDefinition_parser_number7()
+{
+    // Parse a number, strange character
+    UnitDefinition check("check","1.23#45");
+
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number8()
+{
+    // Parse a number, exponent
+    UnitDefinition check("check","1.23e2");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==123);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+}
+
+void test_UnitDefinition_parser_number9()
+{
+    // Parse a number, negative exponent
+    UnitDefinition check("check","1.23e-2");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==123);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==-4);
+}
+
+void test_UnitDefinition_parser_number10()
+{
+    // Parse a number, exponent on denominator
+    UnitDefinition check("check","1/1.23e-2");
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==0);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==123);
+    TEST_CHECK(check.value_exp==4);
+}
+
+void test_UnitDefinition_parser_number11()
+{
+    // Parse a number, invalid exponent
+    UnitDefinition check("check","1.23e--2");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number12()
+{
+    // Parse a number, invalid exponent
+    UnitDefinition check("check","1.23eE2");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number13()
+{
+    // Parse a number, invalid exponent
+    UnitDefinition check("check","1.23e-2.5");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number14()
+{
+    // Parse a number, invalid exponent
+    UnitDefinition check("check","e-2.5");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number15()
+{
+    // Parse a number, invalid exponent
+    UnitDefinition check("check","/e-2.5");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number16()
+{
+    // Parse a number, invalid exponent should be considered a unit
+    UnitDefinition check("check","1.23e");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==123);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==-2);
+
+    // 'e'
+    TEST_CHECK(check.definition[0].tokStart==4);
+    TEST_CHECK(check.definition[0].tokEnd==5);
+    TEST_CHECK(check.definition[0].expNum==1);
+    TEST_CHECK(check.definition[0].expDen==1);
+
+}
+
+void test_UnitDefinition_parser_number17()
+{
+    // Parse a number, invalid exponent right before the underscore
+    // Should be a unit 'e' multiplied by unit 'm'
+    UnitDefinition check("check","1.23e_m");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==123);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==-2);
+
+    // 'e'
+    TEST_CHECK(check.definition[0].tokStart==4);
+    TEST_CHECK(check.definition[0].tokEnd==5);
+    TEST_CHECK(check.definition[0].expNum==1);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 'm'
+    TEST_CHECK(check.definition[1].tokStart==6);
+    TEST_CHECK(check.definition[1].tokEnd==7);
+    TEST_CHECK(check.definition[1].expNum==1);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_number18()
+{
+    // Parse a number, invalid exponent
+    UnitDefinition check("check","1.23e/567");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number19()
+{
+    // Expressions not allowed by themselves in the middle of a unit
+    UnitDefinition check("check","1.23*4");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+void test_UnitDefinition_parser_number20()
+{
+    // Expressions not allowed by themselves in the middle of a unit
+    UnitDefinition check("check","1.234(5)");
+    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+}
+
+
+
+void other_function() {
     // Try to break the parser with some broken expressions
     UnitDefinition meter("m","1.2345_kg/m^  3    ( / s^3)^2/3");
 
@@ -133,5 +383,29 @@ int main()
     Qty<"Å"> angstrom = length;
 
     std::cout << "length in Å = " << angstrom.value() << "_Å" << std::endl;
-    return 0;
 }
+
+TEST_LIST = {
+    {"UnitDefinition-CanParse",test_UnitDefinition_parser},
+    {"UnitDefinition-ParseNumber", test_UnitDefinition_parser_number},
+    {"UnitDefinition-ParseNumber2", test_UnitDefinition_parser_number2},
+    {"UnitDefinition-ParseNumber3", test_UnitDefinition_parser_number3},
+    {"UnitDefinition-ParseNumber4", test_UnitDefinition_parser_number4},
+    {"UnitDefinition-ParseNumber5", test_UnitDefinition_parser_number5},
+    {"UnitDefinition-ParseNumber6", test_UnitDefinition_parser_number6},
+    {"UnitDefinition-ParseNumber7", test_UnitDefinition_parser_number7},
+    {"UnitDefinition-ParseNumber8", test_UnitDefinition_parser_number8},
+    {"UnitDefinition-ParseNumber9", test_UnitDefinition_parser_number9},
+    {"UnitDefinition-ParseNumber10", test_UnitDefinition_parser_number10},
+    {"UnitDefinition-ParseNumber11", test_UnitDefinition_parser_number11},
+    {"UnitDefinition-ParseNumber12", test_UnitDefinition_parser_number12},
+    {"UnitDefinition-ParseNumber13", test_UnitDefinition_parser_number13},
+    {"UnitDefinition-ParseNumber14", test_UnitDefinition_parser_number14},
+    {"UnitDefinition-ParseNumber15", test_UnitDefinition_parser_number15},
+    {"UnitDefinition-ParseNumber16", test_UnitDefinition_parser_number16},
+    {"UnitDefinition-ParseNumber17", test_UnitDefinition_parser_number17},
+    {"UnitDefinition-ParseNumber18", test_UnitDefinition_parser_number18},
+    {"UnitDefinition-ParseNumber19", test_UnitDefinition_parser_number19},
+    {"UnitDefinition-ParseNumber20", test_UnitDefinition_parser_number20},
+    {NULL,NULL}
+};
