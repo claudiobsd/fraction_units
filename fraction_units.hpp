@@ -28,8 +28,7 @@ Qty<TXT> { 1.0 }
 
 enum UnitError {
     NoError = 0,
-    InvalidToken,
-    InvalidExponent,
+    InvalidDefinition,
     BadParenthesis,
     DefinitionTooLong,
     TooManyTokens
@@ -416,13 +415,13 @@ struct UnitDefinition {
                 if (!haveExponent && u_def[i] == '.') {
                     expmove = 1;
                 } else {
-                    if (!haveExponent && u_def[i] == '/' && !haveDen && u_def[i + 1] >= '0' &&
-                        u_def[i + 1] <= '9') {
+                    if (!haveExponent && u_def[i] == '/' && !haveDen &&
+                        u_def[i + 1] >= '0' && u_def[i + 1] <= '9') {
                         // Looks like we have a denominator in the value
                         // Store the current number in the denominator and start over, we'll
                         // swap them later
                         denPart = intPart;
-                        denExpTen = expTen + (expNeg? -expDigits:expDigits);
+                        denExpTen = expTen + (expNeg ? -expDigits : expDigits);
                         intPart = 0;
                         expTen = 0;
                         expmove = 0;
@@ -430,13 +429,13 @@ struct UnitDefinition {
                         haveExponent = false;
                         haveDen = true;
                     } else {
-                        if (!haveExponent &&
-                            (u_def[i] == 'e' || u_def[i] == 'E') &&
-                            ((u_def[i + 1] >= '0' && u_def[i + 1] <= '9') || u_def[i + 1] == '-')) {
+                        if (!haveExponent && (u_def[i] == 'e' || u_def[i] == 'E') &&
+                            ((u_def[i + 1] >= '0' && u_def[i + 1] <= '9') ||
+                                                                                      u_def[i + 1] == '-')) {
                             // Valid exponent, switch to exponent mode
                             haveExponent = true;
                             expDigits = 0;
-                            expNeg=false;
+                            expNeg = false;
                         } else {
                             if (haveExponent && !expNeg && expDigits == 0 &&
                                 u_def[i] == '-') {
@@ -457,10 +456,10 @@ struct UnitDefinition {
             }
             ++i;
         }
-        if(haveExponent && expDigits==0) {
+        if (haveExponent && expDigits == 0) {
             // Do not consume the last character, presumably the 'e' or a '-'
             // either way it should trigger a bad token
-            if(i>0) {
+            if (i > 0) {
                 --i;
             }
         }
@@ -471,10 +470,10 @@ struct UnitDefinition {
             denPart = temp;
             // Subtract the exponents of numerator and denominator, we use only one
             // exponent
-            expTen = denExpTen - expTen + (expNeg? -expDigits:expDigits);
+            expTen = denExpTen - expTen + (expNeg ? -expDigits : expDigits);
         } else {
             denPart = 1;
-            expTen -= expNeg? -expDigits:expDigits;
+            expTen -= expNeg ? -expDigits : expDigits;
         }
         // If no value is provided, assume 1.0
         if (intPart == 0) {
@@ -504,19 +503,162 @@ struct UnitDefinition {
         size_t tokEnd = i;
         int64_t expnum = 1;
         int64_t expden = 1;
+
+        // Lambda function to consume a parenthesis level
+        auto consumeParenthesis = [&]() {
+            // Consume the whole parenthesis
+            if(nParen>0) {
+            for (auto j = parenLevel[nParen - 1].firstToken;
+                 j < parenLevel[nParen - 1].lastToken; ++j) {
+                // Apply the current exponent to all the items in the parenthesis
+                allTokens[j].expNum *= parenLevel[nParen - 1].numExp;
+                allTokens[j].expDen *= parenLevel[nParen - 1].denExp;
+            }
+            --nParen;
+            lastTokenWasParen = false;
+            return true;
+            }
+            // Bad Parenthesis, do not consume it to cause an error
+            return false;
+        };
+
+        // Lambda function to consume an exponent in fractional form
+        auto consumeNumericExponent = [&]() {
+
+            bool haveNum = false;
+            bool needDen = false;
+            bool haveSign = false;
+            bool numberInProgress = false;
+            bool numberEnded = false;
+            int64_t num = 0;
+            int64_t den = 0;
+
+            bool isNeg = i < (u_defLen - 1) && u_def[i] == '-';
+            if (isNeg) {
+                haveSign = true;
+                ++i;
+            }
+            bool haveParen = i < (u_defLen - 1) && u_def[i] == '(';
+            if (haveParen) {
+                ++i;
+            }
+            while (i < (u_defLen - 1)) {
+                if (u_def[i] >= '0' && u_def[i] <= '9') {
+                    if (numberEnded)
+                        break;
+                    haveSign = true;
+                    if (!haveNum) {
+                        if (num > 922337203685477579LL) {
+                            // Integer overflow
+                            den = -1;
+                            break;
+                        }
+                        num *= 10;
+                        num += u_def[i] - '0';
+                        numberInProgress = true;
+                    } else {
+                        den *= 10;
+                        if (den > 922337203685477579LL) {
+                            // Integer overflow
+                            den = -1;
+                            break;
+                        }
+                        den += u_def[i] - '0';
+                        needDen = false;
+                        numberInProgress = true;
+                    }
+                } else {
+                    if (u_def[i] == '/' && !haveNum) {
+                        if (!numberInProgress && !numberEnded) {
+                            break;
+                        }
+                        haveNum = true;
+                        needDen = true;
+                        haveSign = false;
+                        numberInProgress = false;
+                        numberEnded = false;
+                    } else {
+                        if (u_def[i] == ')' && haveParen &&
+                            (numberInProgress || numberEnded)) {
+                            ++i;
+                            haveParen = false;
+                            break;
+                        } else {
+                            if (u_def[i] == '-' && !haveSign && !numberEnded &&
+                                !numberInProgress) {
+                                haveSign = true;
+                                isNeg = !isNeg;
+                            } else {
+                                if (u_def[i] == ' ') {
+                                    if (numberInProgress) {
+                                        numberInProgress = false;
+                                        numberEnded = true;
+                                    }
+                                } else {
+                                    // No other chars allowed in
+                                    // the number In the future,
+                                    // see if we can also accept
+                                    // exponents here
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                ++i;
+            }
+
+            if (den == 0) {
+                den = 1;
+            }
+            if (isNeg) {
+                num = -num;
+            }
+            // If the previous symbol was a division and there was no
+            // parenthesis, don't consume the operator since it is
+            // operating on the unit, not the exponent
+            if (!haveParen && needDen) {
+                // We shouldn't consume the last operator
+                while(i>0 && (u_def[i-1]==' ' || u_def[i-1]=='/')) {
+                    --i;
+                }
+            } else {
+                // If the exponent had a parenthesis or was missing a
+                // denominator, fail with an error
+                if (haveParen || needDen || (den < 0)) {
+                    // Syntax error in the exponent
+                    den = 0;
+                }
+            }
+            // Apply the exponent to the last token or the last
+            // parenthesis group
+            if (lastTokenWasParen) {
+                // Apply the exponent to the whole parenthesis instead of the current token
+                if(nParen>0) {
+                    parenLevel[nParen - 1].numExp*=num;
+                    parenLevel[nParen - 1].denExp*=den;
+                }
+            } else {
+                // Just the last token
+                allTokens[nTokens - 1].expNum *= num;
+                allTokens[nTokens - 1].expDen *= den;
+            }
+            tokStart = tokEnd = i;
+            // Reset next exponent
+            expnum = 1;
+            expden = 1;
+        };
+
+        // End of Lambda functions
+
+        // Main Loop, start consuming characters
         while (i < (u_defLen - 1)) {
             if (u_def[i] == '*' || u_def[i] == '-') {
                 // This is a multiplication
                 if (lastTokenWasParen) {
-                    // Consume the whole parenthesis
-                    for (auto j = parenLevel[nParen - 1].firstToken;
-                         j < parenLevel[nParen - 1].lastToken; ++j) {
-                        // Apply the current exponent to all the items in the parenthesis
-                        allTokens[j].expNum *= expnum;
-                        allTokens[j].expDen *= expden;
+                    if(!consumeParenthesis()) {
+                        break;
                     }
-                    --nParen;
-                    lastTokenWasParen = false;
                 } else {
                     if (i > tokStart) {
                         tokEnd = i;
@@ -530,9 +672,12 @@ struct UnitDefinition {
                 expnum = 1;
                 expden = 1;
             } else {
-                if (u_def[i] == ' ' || u_def[i]=='_') {
+                if (u_def[i] == ' ' || u_def[i] == '_') {
                     // This is a multiplication unless it's the beginning of a token
                     if (lastTokenWasParen) {
+                        if(!consumeParenthesis()) {
+                            break;
+                        }
                     } else {
                         if (i > tokStart) {
                             tokEnd = i;
@@ -548,16 +693,9 @@ struct UnitDefinition {
                 } else {
                     if (u_def[i] == '/') {
                         if (lastTokenWasParen) {
-                            // Consume the whole parenthesis
-                            for (auto j = parenLevel[nParen - 1].firstToken;
-                                 j < parenLevel[nParen - 1].lastToken; ++j) {
-                                // Apply the current exponent to all the items in the
-                                // parenthesis
-                                allTokens[j].expNum *= expnum;
-                                allTokens[j].expDen *= expden;
+                            if(!consumeParenthesis()) {
+                                break;
                             }
-                            --nParen;
-                            lastTokenWasParen = false;
                         } else {
                             if (i > tokStart) {
                                 tokEnd = i;
@@ -572,6 +710,12 @@ struct UnitDefinition {
                         expden = 1;
                     } else {
                         if (u_def[i] == '(') {
+                            // Opening a parenthesis in a token implies multiplication
+                            if(lastTokenWasParen) {
+                            if(!consumeParenthesis()) {
+                                break;
+                            }
+                            }
                             if (i > tokStart) {
                                 // We have an open token, close it and multiply
                                 tokEnd = i;
@@ -589,115 +733,54 @@ struct UnitDefinition {
                             expden = 1;
                         } else {
                             if (u_def[i] == ')') {
-                                if (i > tokStart) {
-                                    // We have an open token, close it and multiply
+                                if(lastTokenWasParen) {
+                                    if(!consumeParenthesis()) {
+                                        break;
+                                    }
+                                } else {
+                                    if (i > tokStart) {
+                                    // We have an open token, close it and
+                                        // multiply
                                     tokEnd = i;
                                     // Consume the token
-                                    allTokens[nTokens] = {tokStart, tokEnd, expnum, expden};
+                                    allTokens[nTokens] = {tokStart, tokEnd,
+                                                          expnum, expden};
                                     ++nTokens;
+                                    }
                                 }
                                 tokStart = tokEnd = i + 1;
                                 // Reset next exponent
                                 expnum = 1;
                                 expden = 1;
-                                lastTokenWasParen = true;
                                 if (nParen > 0) {
-                                    // Close the parenthesis but don't consume it
+                                    // Close the parenthesis but don't consume it yet, there might be an exponent for the whole parenthesis coming
                                     parenLevel[nParen - 1].lastToken = nTokens;
-                                    // Apply the exponent of the parenthesis group to all the
-                                    // tokens
-                                    for (auto j = parenLevel[nParen - 1].firstToken;
-                                         j < parenLevel[nParen - 1].lastToken; ++j) {
-                                        // Apply the current exponent to all the items in the
-                                        // parenthesis
-                                        allTokens[j].expNum *= parenLevel[nParen - 1].numExp;
-                                        allTokens[j].expDen *= parenLevel[nParen - 1].denExp;
-                                    }
                                 }
+                                   lastTokenWasParen = true;
                             } else {
                                 if (u_def[i] == '^') {
-                                    // Consume a fractional exponent
-                                    if (lastTokenWasParen == false) {
-                                        if (i > tokStart) {
-                                            // We have an open token, close it and multiply
-                                            tokEnd = i;
-                                            // Consume the token
-                                            allTokens[nTokens] = {tokStart, tokEnd, expnum, expden};
-                                            ++nTokens;
-                                        }
-                                        tokStart = tokEnd = i + 1;
+                                    // Consume a numerical exponent in fractional
+                                    // form, accept parenthesis
+                                    if (i > tokStart) {
+                                        // We have an open token, close it and
+                                        // multiply
+                                        tokEnd = i;
+                                        // Consume the token
+                                        allTokens[nTokens] = {tokStart, tokEnd,
+                                                              expnum, expden};
+                                        ++nTokens;
                                     }
+                                    tokStart = tokEnd = i + 1;
 
                                     ++i;
-                                    bool haveNum = false;
-                                    bool needDen = false;
-                                    bool haveParen = i < (u_defLen - 1) && u_def[i] == '(';
-                                    int64_t num = 0;
-                                    int64_t den = 0;
-                                    while (i < (u_defLen - 1)) {
-                                        if (u_def[i] >= '0' && u_def[i] <= '9') {
-                                            if (!haveNum) {
-                                                num *= 10;
-                                                num += u_def[i] - '0';
-                                            } else {
-                                                den *= 10;
-                                                den += u_def[i] - '0';
-                                                needDen = false;
-                                            }
-                                        } else {
-                                            if (u_def[i] == '/' && !haveNum) {
-                                                haveNum = true;
-                                                needDen = true;
-                                            } else {
-                                                if (u_def[i] == ')' && haveParen) {
-                                                    ++i;
-                                                    break;
-                                                } else {
-                                                    if (u_def[i] == ' ') {
-
-                                                    } else {
-                                                        // No other chars allowed in the number
-                                                        // In the future, see if we can also accept
-                                                        // exponents here
-                                                        break;
-                                                    }
-                                                }
-                                            }
+                                    consumeNumericExponent();
+                                    // If the exponent was applied to a parenthesis, consume the closed parenthesis
+                                    if(lastTokenWasParen) {
+                                        if(!consumeParenthesis()) {
+                                            break;
                                         }
-                                        ++i;
                                     }
-
-                                    if (den == 0) {
-                                        den = 1;
-                                    }
-
-                                    // Apply the exponent to the last token or the last
-                                    // parenthesis group
-                                    if (lastTokenWasParen) {
-                                        // Consume the whole parenthesis
-                                        for (auto j = parenLevel[nParen - 1].firstToken;
-                                             j < parenLevel[nParen - 1].lastToken; ++j) {
-                                            // Apply the current exponent to all the items in the
-                                            // parenthesis
-                                            allTokens[j].expNum *= num;
-                                            allTokens[j].expDen *= den;
-                                        }
-                                        --nParen;
-                                        lastTokenWasParen = false;
-                                    } else {
-                                        // Just the last token
-                                        allTokens[nTokens - 1].expNum *= num;
-                                        allTokens[nTokens - 1].expDen *= den;
-                                    }
-                                    tokStart = tokEnd = i;
-                                    if (needDen && u_def[i - 1] == '/') {
-                                        --i;
-                                    }
-                                    // Reset next exponent
-                                    expnum = 1;
-                                    expden = 1;
-
-                                    continue;
+                                    continue;   // We've already consumed the current character, no need to increment it again
                                 }
                             }
                         }
@@ -707,17 +790,12 @@ struct UnitDefinition {
             ++i;
         }
         if (lastTokenWasParen) {
-            // Consume the whole parenthesis
-            if (nParen > 0) {
-                for (auto j = parenLevel[nParen - 1].firstToken;
-                     j < parenLevel[nParen - 1].lastToken; ++j) {
-                    // Apply the current exponent to all the items in the parenthesis
-                    allTokens[j].expNum *= expnum;
-                    allTokens[j].expDen *= expden;
-                }
+            // Apply the current exponent to the whole parenthesis instead of the current token
+            if(nParen>0) {
+                parenLevel[nParen - 1].numExp*=expnum;
+                parenLevel[nParen - 1].denExp*=expden;
             }
-            --nParen;
-            lastTokenWasParen = false;
+            consumeParenthesis();
         } else {
             // Did we have an open token?
             if (i > tokStart && tokStart != u_defLen - 1) {
@@ -741,7 +819,7 @@ struct UnitDefinition {
 
         for (auto i = 0; i < nTokens; ++i) {
             if (allTokens[i].tokStart == allTokens[i].tokEnd) {
-                error_state = UnitError::InvalidToken;
+                error_state = UnitError::InvalidDefinition;
                 error_index = allTokens[i].tokStart;
                 break;
             } else {
@@ -749,14 +827,14 @@ struct UnitDefinition {
                     // No numbers in a token, otherwise it's fair game to use Unicode
                     // chars (Angstrom, Micron, etc.)
                     if (u_def[j] >= '0' && u_def[j] <= '9') {
-                        error_state = UnitError::InvalidToken;
+                        error_state = UnitError::InvalidDefinition;
                         error_index = allTokens[i].tokStart + j;
                         break;
                     }
                 }
             }
             if (allTokens[i].expDen == 0) {
-                error_state = UnitError::InvalidExponent;
+                error_state = UnitError::InvalidDefinition;
                 error_index = allTokens[i].tokEnd;
                 break;
             }
@@ -1472,6 +1550,9 @@ public:
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ auto operator/(const Qty<W> &lhs, const Qty<V> &rhs);
 
+    // Operator *= or /= with another unit does not exist, a variable cannot
+    // change units once declared. For that use case, use the RQty class.
+
 #ifdef RUNTIME_COMPONENT
 
     friend class RQty;
@@ -1496,15 +1577,13 @@ public:
 #endif
 
 private:
-    // Operator *= or /= with another unit does not exist, a variable cannot
-    // change units once declared. For that use case, use the RQty class.
+    // This becomes the one and only data member: the number
+    long double number;
 
     // The actual unitDef for the physical quantity is a static _CONSTEXPR_ member
     // of the class therefore the compiler will not create/store any data unless
     // it is used during run time
     static constexpr UnitDefinition unitDef = {U};
-    // This becomes the one and only data member: the number
-    long double number;
 };
 
 // Addition operator for 2 units
@@ -1644,9 +1723,8 @@ public:
         // We cannot use the one from the argument because the quantity may not be
         // _CONSTEXPR_ even though the unit of the quantity always is
         auto quotientUnit = unitDef.divide(unitTo.unitDef); // This is (U / V)
-        auto combinedUnit =
-            quotientUnit.simplify(); // This makes expand(U/V) ==
-            // expand(U)/expand(V) == conversion factor
+        auto combinedUnit = quotientUnit.simplify(); // This makes expand(U/V) ==
+        // expand(U)/expand(V) == conversion factor
         // After simplification, the result should be a non-dimensional factor,
         // otherwise the units are incompatible and we cannot convert Check that the
         // resulting unit has an 'empty' list of tokens (therefore non-dimensional)
@@ -1698,9 +1776,8 @@ public:
         // We cannot use the one from the argument because the quantity may not be
         // _CONSTEXPR_ even though the unit of the quantity always is
         auto quotientUnit = unitDef.divide(unitTo.unitDef); // This is (U / V)
-        auto combinedUnit =
-            quotientUnit.simplify(); // This makes expand(U/V) ==
-            // expand(U)/expand(V) == conversion factor
+        auto combinedUnit = quotientUnit.simplify(); // This makes expand(U/V) ==
+        // expand(U)/expand(V) == conversion factor
         // After simplification, the result should be a non-dimensional factor,
         // otherwise the units are incompatible and we cannot convert Check that the
         // resulting unit has an 'empty' list of tokens (therefore non-dimensional)
@@ -1752,9 +1829,8 @@ public:
         // We cannot use the one from the argument because the quantity may not be
         // _CONSTEXPR_ even though the unit of the quantity always is
         auto quotientUnit = unitFrom.unitDef.divide(unitDef); // This is (U / V)
-        auto combinedUnit =
-            quotientUnit.simplify(); // This makes expand(U/V) ==
-            // expand(U)/expand(V) == conversion factor
+        auto combinedUnit = quotientUnit.simplify(); // This makes expand(U/V) ==
+        // expand(U)/expand(V) == conversion factor
         // After simplification, the result should be a non-dimensional factor,
         // otherwise the units are incompatible and we cannot convert Check that the
         // resulting unit has an 'empty' list of tokens (therefore non-dimensional)

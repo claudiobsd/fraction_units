@@ -125,7 +125,7 @@ void test_UnitDefinition_parser_number7()
     // Parse a number, strange character
     UnitDefinition check("check","1.23#45");
 
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number8()
@@ -174,35 +174,35 @@ void test_UnitDefinition_parser_number11()
 {
     // Parse a number, invalid exponent
     UnitDefinition check("check","1.23e--2");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number12()
 {
     // Parse a number, invalid exponent
     UnitDefinition check("check","1.23eE2");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number13()
 {
     // Parse a number, invalid exponent
     UnitDefinition check("check","1.23e-2.5");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number14()
 {
     // Parse a number, invalid exponent
     UnitDefinition check("check","e-2.5");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number15()
 {
     // Parse a number, invalid exponent
     UnitDefinition check("check","/e-2.5");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number16()
@@ -254,23 +254,482 @@ void test_UnitDefinition_parser_number18()
 {
     // Parse a number, invalid exponent
     UnitDefinition check("check","1.23e/567");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number19()
 {
     // Expressions not allowed by themselves in the middle of a unit
     UnitDefinition check("check","1.23*4");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number20()
 {
     // Expressions not allowed by themselves in the middle of a unit
     UnitDefinition check("check","1.234(5)");
-    TEST_CHECK(check.error_state==UnitError::InvalidToken);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
+void test_UnitDefinition_parser_unitExponent1()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_unitExponent2()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^2/3");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_unitExponent3()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^-2/3");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==-2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_unitExponent4()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2/4)");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==4);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_unitExponent5()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^-(2/3)");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==-2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_unitExponent6()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^2/-3");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==-2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+
+}
+
+void test_UnitDefinition_parser_unitExponent7()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2+1)");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent8()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2*3)");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent9()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2 3)");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+
+}
+void test_UnitDefinition_parser_unitExponent10() {
+    UnitDefinition check("check", "m^( 2/)");
+    TEST_CHECK(check.error_state == UnitError::InvalidDefinition);
+}
+void test_UnitDefinition_parser_unitExponent11()
+{
+    UnitDefinition check("check", "m^(2/ )");
+    TEST_CHECK(check.error_state == UnitError::InvalidDefinition);
+}
+void test_UnitDefinition_parser_unitExponent12()
+{
+    UnitDefinition check("check", "m^( / 3 )");
+    TEST_CHECK(check.error_state == UnitError::InvalidDefinition);
+}
+void test_UnitDefinition_parser_unitExponent13() {
+    UnitDefinition check("check", "m^( 2 / 3 )");
+    TEST_CHECK(check.error_state == UnitError::NoError);
+
+    TEST_CHECK(check.value_ip == 1);
+    TEST_CHECK(check.value_den == 1);
+    TEST_CHECK(check.value_exp == 0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart == 0);
+    TEST_CHECK(check.definition[0].tokEnd == 1);
+    TEST_CHECK(check.definition[0].expNum == 2);
+    TEST_CHECK(check.definition[0].expDen == 3);
+    // End
+    TEST_CHECK(check.definition[1].tokStart == 0);
+    TEST_CHECK(check.definition[2].tokEnd == 0);
+}
+
+void test_UnitDefinition_parser_unitExponent14()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2_3)");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent15()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2e3)");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent16()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^(2/3");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent17()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^2.3");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent18()
+{
+    // Parse a unit exponent
+    constexpr UnitDefinition check("check","m^123456789012345678901234567890");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent19()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^1/123456789012345678901234567890");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent20()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m^/12");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_unitExponent21()
+{
+    // Parse a unit exponent
+    UnitDefinition check("check","m123");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+
+void test_UnitDefinition_parser_multipleTokens1()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m s");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==1);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==2);
+    TEST_CHECK(check.definition[1].tokEnd==3);
+    TEST_CHECK(check.definition[1].expNum==1);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+
+void test_UnitDefinition_parser_multipleTokens2()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m/s^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==1);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==2);
+    TEST_CHECK(check.definition[1].tokEnd==3);
+    TEST_CHECK(check.definition[1].expNum==-2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+void test_UnitDefinition_parser_multipleTokens3()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^2/s^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==4);
+    TEST_CHECK(check.definition[1].tokEnd==5);
+    TEST_CHECK(check.definition[1].expNum==-2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+void test_UnitDefinition_parser_multipleTokens4()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^2/3s^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==5);
+    TEST_CHECK(check.definition[1].tokEnd==6);
+    TEST_CHECK(check.definition[1].expNum==2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+void test_UnitDefinition_parser_multipleTokens5()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^2/ 3s^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==6);
+    TEST_CHECK(check.definition[1].tokEnd==7);
+    TEST_CHECK(check.definition[1].expNum==2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+void test_UnitDefinition_parser_multipleTokens6()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^(2/-3)s^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==-2);
+    TEST_CHECK(check.definition[0].expDen==3);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==8);
+    TEST_CHECK(check.definition[1].tokEnd==9);
+    TEST_CHECK(check.definition[1].expNum==2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+
+void test_UnitDefinition_parser_multipleTokens7()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^(2/s^2)");
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
+}
+void test_UnitDefinition_parser_multipleTokens8()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^2/ s^2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==5);
+    TEST_CHECK(check.definition[1].tokEnd==6);
+    TEST_CHECK(check.definition[1].expNum==-2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+void test_UnitDefinition_parser_multipleTokens9()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","m^2/(s^2)");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==0);
+    TEST_CHECK(check.definition[0].tokEnd==1);
+    TEST_CHECK(check.definition[0].expNum==2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==5);
+    TEST_CHECK(check.definition[1].tokEnd==6);
+    TEST_CHECK(check.definition[1].expNum==-2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
+void test_UnitDefinition_parser_multipleTokens10()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","1/(m^2/(s^2))");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==3);
+    TEST_CHECK(check.definition[0].tokEnd==4);
+    TEST_CHECK(check.definition[0].expNum==-2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==8);
+    TEST_CHECK(check.definition[1].tokEnd==9);
+    TEST_CHECK(check.definition[1].expNum==2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // End
+    TEST_CHECK(check.definition[2].tokStart==0);
+    TEST_CHECK(check.definition[2].tokEnd==0);
+}
 
 
 void other_function() {
@@ -407,5 +866,38 @@ TEST_LIST = {
     {"UnitDefinition-ParseNumber18", test_UnitDefinition_parser_number18},
     {"UnitDefinition-ParseNumber19", test_UnitDefinition_parser_number19},
     {"UnitDefinition-ParseNumber20", test_UnitDefinition_parser_number20},
+    {"UnitDefinition-ParseExponent1", test_UnitDefinition_parser_unitExponent1},
+    {"UnitDefinition-ParseExponent2", test_UnitDefinition_parser_unitExponent2},
+    {"UnitDefinition-ParseExponent3", test_UnitDefinition_parser_unitExponent3},
+    {"UnitDefinition-ParseExponent4", test_UnitDefinition_parser_unitExponent4},
+    {"UnitDefinition-ParseExponent5", test_UnitDefinition_parser_unitExponent5},
+    {"UnitDefinition-ParseExponent6", test_UnitDefinition_parser_unitExponent6},
+    {"UnitDefinition-ParseExponent7", test_UnitDefinition_parser_unitExponent7},
+    {"UnitDefinition-ParseExponent8", test_UnitDefinition_parser_unitExponent8},
+    {"UnitDefinition-ParseExponent9", test_UnitDefinition_parser_unitExponent9},
+    {"UnitDefinition-ParseExponent10", test_UnitDefinition_parser_unitExponent10},
+    {"UnitDefinition-ParseExponent11", test_UnitDefinition_parser_unitExponent11},
+    {"UnitDefinition-ParseExponent12", test_UnitDefinition_parser_unitExponent12},
+    {"UnitDefinition-ParseExponent13", test_UnitDefinition_parser_unitExponent13},
+    {"UnitDefinition-ParseExponent14", test_UnitDefinition_parser_unitExponent14},
+    {"UnitDefinition-ParseExponent15", test_UnitDefinition_parser_unitExponent15},
+    {"UnitDefinition-ParseExponent16", test_UnitDefinition_parser_unitExponent16},
+    {"UnitDefinition-ParseExponent17", test_UnitDefinition_parser_unitExponent17},
+    {"UnitDefinition-ParseExponent18", test_UnitDefinition_parser_unitExponent18},
+    {"UnitDefinition-ParseExponent19", test_UnitDefinition_parser_unitExponent19},
+    {"UnitDefinition-ParseExponent20", test_UnitDefinition_parser_unitExponent20},
+    {"UnitDefinition-ParseExponent21", test_UnitDefinition_parser_unitExponent21},
+    {"UnitDefinition-MultipleTokens1", test_UnitDefinition_parser_multipleTokens1},
+    {"UnitDefinition-MultipleTokens2", test_UnitDefinition_parser_multipleTokens2},
+    {"UnitDefinition-MultipleTokens3", test_UnitDefinition_parser_multipleTokens3},
+    {"UnitDefinition-MultipleTokens4", test_UnitDefinition_parser_multipleTokens4},
+    {"UnitDefinition-MultipleTokens5", test_UnitDefinition_parser_multipleTokens5},
+    {"UnitDefinition-MultipleTokens6", test_UnitDefinition_parser_multipleTokens6},
+    {"UnitDefinition-MultipleTokens7", test_UnitDefinition_parser_multipleTokens7},
+    {"UnitDefinition-MultipleTokens8", test_UnitDefinition_parser_multipleTokens8},
+    {"UnitDefinition-MultipleTokens9", test_UnitDefinition_parser_multipleTokens9},
+    {"UnitDefinition-MultipleTokens10", test_UnitDefinition_parser_multipleTokens10},
+//    {"UnitDefinition-MultipleTokens11", test_UnitDefinition_parser_multipleTokens11},
+//    {"UnitDefinition-MultipleTokens12", test_UnitDefinition_parser_multipleTokens12},
     {NULL,NULL}
 };
