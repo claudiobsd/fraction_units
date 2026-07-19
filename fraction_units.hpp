@@ -499,6 +499,7 @@ struct UnitDefinition {
             ++i;
         }
         bool lastTokenWasParen = false;
+        bool lastTokenWasOperator = false;
         size_t tokStart = i;
         size_t tokEnd = i;
         int64_t expnum = 1;
@@ -666,13 +667,18 @@ struct UnitDefinition {
                         allTokens[nTokens] = {tokStart, tokEnd, expnum, expden};
                         ++nTokens;
                     }
-                    tokStart = tokEnd = i + 1;
+                }
+                tokStart = tokEnd = i + 1;
+                if(lastTokenWasOperator) {
+                    // Can't have operators back-to-back
+                    break;
                 }
                 // Reset next exponent
                 expnum = 1;
                 expden = 1;
+                lastTokenWasOperator = true;
             } else {
-                if (u_def[i] == ' ' || u_def[i] == '_') {
+                if (u_def[i] == ' ') {
                     // This is a multiplication unless it's the beginning of a token
                     if (lastTokenWasParen) {
                         if(!consumeParenthesis()) {
@@ -684,11 +690,14 @@ struct UnitDefinition {
                             // Consume the token
                             allTokens[nTokens] = {tokStart, tokEnd, expnum, expden};
                             ++nTokens;
-                            // Reset next exponent
-                            expnum = 1;
-                            expden = 1;
                         }
-                        tokStart = tokEnd = i + 1;
+                    }
+                    tokStart = tokEnd = i + 1;
+                    if(!lastTokenWasOperator) {
+                    // The space becomes a multiplication
+                    // Reset next exponent
+                    expnum = 1;
+                    expden = 1;
                     }
                 } else {
                     if (u_def[i] == '/') {
@@ -705,9 +714,13 @@ struct UnitDefinition {
                             }
                             tokStart = tokEnd = i + 1;
                         }
+                        if(lastTokenWasOperator) {
+                            break;
+                        }
                         // Reset next exponent
                         expnum = -1;
                         expden = 1;
+                        lastTokenWasOperator = true;
                     } else {
                         if (u_def[i] == '(') {
                             // Opening a parenthesis in a token implies multiplication
@@ -731,6 +744,7 @@ struct UnitDefinition {
                             ++nParen;
                             expnum = 1;
                             expden = 1;
+                            lastTokenWasOperator = false;
                         } else {
                             if (u_def[i] == ')') {
                                 if(lastTokenWasParen) {
@@ -757,6 +771,7 @@ struct UnitDefinition {
                                     parenLevel[nParen - 1].lastToken = nTokens;
                                 }
                                    lastTokenWasParen = true;
+                                   lastTokenWasOperator = false;
                             } else {
                                 if (u_def[i] == '^') {
                                     // Consume a numerical exponent in fractional
@@ -772,6 +787,10 @@ struct UnitDefinition {
                                     }
                                     tokStart = tokEnd = i + 1;
 
+                                    if(lastTokenWasOperator) {
+                                        break;
+                                    }
+
                                     ++i;
                                     consumeNumericExponent();
                                     // If the exponent was applied to a parenthesis, consume the closed parenthesis
@@ -781,6 +800,10 @@ struct UnitDefinition {
                                         }
                                     }
                                     continue;   // We've already consumed the current character, no need to increment it again
+                                }
+                                else {
+                                    // Any other character is part of a token, consume it
+                                    lastTokenWasOperator = false;
                                 }
                             }
                         }
@@ -815,6 +838,10 @@ struct UnitDefinition {
         if (nParen != 0) {
             error_state = UnitError::BadParenthesis;
             error_index = u_defLen - 1;
+        }
+        if(lastTokenWasOperator) {
+            error_state = UnitError::InvalidDefinition;
+            error_index = i;
         }
 
         for (auto i = 0; i < nTokens; ++i) {

@@ -111,13 +111,7 @@ void test_UnitDefinition_parser_number6()
     // Parse a number, denominator doesn't exist
     UnitDefinition check("check","1.2345/");
 
-    TEST_CHECK(check.error_state==UnitError::NoError);
-    TEST_CHECK(check.definition[0].tokStart==0);
-    TEST_CHECK(check.definition[0].tokEnd==0);
-
-    TEST_CHECK(check.value_ip==12345);
-    TEST_CHECK(check.value_den==1);
-    TEST_CHECK(check.value_exp==-4);
+    TEST_CHECK(check.error_state==UnitError::InvalidDefinition);
 }
 
 void test_UnitDefinition_parser_number7()
@@ -226,27 +220,23 @@ void test_UnitDefinition_parser_number16()
 void test_UnitDefinition_parser_number17()
 {
     // Parse a number, invalid exponent right before the underscore
-    // Should be a unit 'e' multiplied by unit 'm'
+    // Should be a unit 'e_m', this is tricky, maybe the underscore should not be permitted in tokens
     UnitDefinition check("check","1.23e_m");
+
     TEST_CHECK(check.error_state==UnitError::NoError);
 
     TEST_CHECK(check.value_ip==123);
     TEST_CHECK(check.value_den==1);
     TEST_CHECK(check.value_exp==-2);
 
-    // 'e'
+    // 'e_m'
     TEST_CHECK(check.definition[0].tokStart==4);
-    TEST_CHECK(check.definition[0].tokEnd==5);
+    TEST_CHECK(check.definition[0].tokEnd==7);
     TEST_CHECK(check.definition[0].expNum==1);
     TEST_CHECK(check.definition[0].expDen==1);
-    // 'm'
-    TEST_CHECK(check.definition[1].tokStart==6);
-    TEST_CHECK(check.definition[1].tokEnd==7);
-    TEST_CHECK(check.definition[1].expNum==1);
-    TEST_CHECK(check.definition[1].expDen==1);
     // End
-    TEST_CHECK(check.definition[2].tokStart==0);
-    TEST_CHECK(check.definition[2].tokEnd==0);
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[1].tokEnd==0);
 
 }
 
@@ -731,6 +721,36 @@ void test_UnitDefinition_parser_multipleTokens10()
     TEST_CHECK(check.definition[2].tokEnd==0);
 }
 
+void test_UnitDefinition_parser_multipleTokens11()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","1/(m^2/(s^2))*s^-2");
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==1);
+    TEST_CHECK(check.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==3);
+    TEST_CHECK(check.definition[0].tokEnd==4);
+    TEST_CHECK(check.definition[0].expNum==-2);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[1].tokStart==8);
+    TEST_CHECK(check.definition[1].tokEnd==9);
+    TEST_CHECK(check.definition[1].expNum==2);
+    TEST_CHECK(check.definition[1].expDen==1);
+    // 's'
+    TEST_CHECK(check.definition[2].tokStart==14);
+    TEST_CHECK(check.definition[2].tokEnd==15);
+    TEST_CHECK(check.definition[2].expNum==-2);
+    TEST_CHECK(check.definition[2].expDen==1);
+    // End
+    TEST_CHECK(check.definition[3].tokStart==0);
+    TEST_CHECK(check.definition[3].tokEnd==0);
+}
+
 
 void other_function() {
     // Try to break the parser with some broken expressions
@@ -897,7 +917,7 @@ TEST_LIST = {
     {"UnitDefinition-MultipleTokens8", test_UnitDefinition_parser_multipleTokens8},
     {"UnitDefinition-MultipleTokens9", test_UnitDefinition_parser_multipleTokens9},
     {"UnitDefinition-MultipleTokens10", test_UnitDefinition_parser_multipleTokens10},
-//    {"UnitDefinition-MultipleTokens11", test_UnitDefinition_parser_multipleTokens11},
+    {"UnitDefinition-MultipleTokens11", test_UnitDefinition_parser_multipleTokens11},
 //    {"UnitDefinition-MultipleTokens12", test_UnitDefinition_parser_multipleTokens12},
     {NULL,NULL}
 };
