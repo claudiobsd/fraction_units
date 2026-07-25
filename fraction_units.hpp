@@ -6,14 +6,14 @@
 #include <cstdint>
 
 // Define this as-needed to enable the run time component class
-#define RUNTIME_COMPONENT 1
+//#define RUNTIME_COMPONENT 1
 
 #ifdef NDEBUG
 #warning "Compiled in Release"
-#define _OPTIMIZE_ __attribute__((optimize("O3")))
+#define _OPTIMIZE_ __attribute__((always_inline))
 #else
 #warning "Compiled in Debug"
-#define _OPTIMIZE_
+#define _OPTIMIZE_ __attribute__((always_inline))
 //__attribute__((optimize("Og")))
 #endif
 
@@ -81,6 +81,27 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,
 
 _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t intabs(int64_t number) {
     return (number < 0) ? -number : number;
+}
+
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ long double powerOf10Exponent(const int64_t exp10) {
+    if (!exp10) {
+        return 1.0;
+    }
+    const auto absexp = intabs(exp10);
+    if (absexp < 18) {
+        int64_t ipowerOf10 = 1;
+        // Should use a table for this, but for now...
+        for (auto k = 0; k < absexp; ++k) {
+            ipowerOf10 *= 10;
+        }
+        if (exp10 < 0) {
+            return 1.0 / ipowerOf10;
+        } else {
+            return (long double)ipowerOf10;
+        }
+    } else {
+        return std::pow(10.0, exp10);
+    }
 }
 
 // Added this because MSVC does not support __int128 yet (when???)
@@ -1453,79 +1474,24 @@ public:
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty() : number(0.0) {}
     // Constructor with an integer number
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(int64_t _value)
-        : number((double)_value) {}
+        : number((long double)_value) {}
     // Constructor with a floating point number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) : number(_value) {}
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) : number((long double)_value) {}
     // Constructor for temporaries
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(long double _value)
         : number(_value) {}
-
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline long double
-    conversionFactorTo(const Qty<V> &) const {
-        // To convert a unit from U to V:
-        // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
-        // k*U = k*V * (expand(U)/expand(V))
-        // conv. factor = (expand(U)/expand(V))
-
-        // Create a unit V with a value of 1 that is a _CONSTEXPR_
-        // We cannot use the one from the argument because the quantity may not be
-        // _CONSTEXPR_ even though the unit of the quantity always is
-        _CONSTEXPR_ Qty<V> otherunit{1.0};
-        _CONSTEXPR_ auto quotientUnit =
-            unitDef.divide(otherunit.unitDef); // This is (U / V)
-        _CONSTEXPR_ auto combinedUnit =
-            quotientUnit.simplify(); // This makes expand(U/V) ==
-            // expand(U)/expand(V) == conversion factor
-        // After simplification, the result should be a non-dimensional factor,
-        // otherwise the units are incompatible and we cannot convert Check that the
-        // resulting unit has an 'empty' list of tokens (therefore non-dimensional)
-        if (combinedUnit.definition[0].tokEnd !=
-            combinedUnit.definition[0].tokStart) {
-            // Also check that there were no errors
-            if (combinedUnit.error_state != UnitError::NoError) {
-                throw UnitErrorMessages[combinedUnit.error_state];
-            }
-            // This isn't a real throw, just generates a compile error. The string
-            // will be buried in other messages but still visible by the user
-            throw "Incompatible Units";
-        }
-        // Units were compatible, so extract the value
-        _CONSTEXPR_ long double convFactor =
-            (combinedUnit.value_den != 1)
-                                                 ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
-                                                 : combinedUnit.value_ip;
-        // Apply the exponent
-        long double powerOf10 = 1.0;
-        if (combinedUnit.value_exp) {
-            if (intabs(combinedUnit.value_exp) < 18) {
-                int64_t ipowerOf10 = 1;
-                // Should use a table for this, but for now...
-                for (auto k = 0; k < intabs(combinedUnit.value_exp); ++k) {
-                    ipowerOf10 *= 10;
-                }
-                if (combinedUnit.value_exp < 0) {
-                    powerOf10 /= ipowerOf10;
-                } else {
-                    powerOf10 *= ipowerOf10;
-                }
-            } else {
-                powerOf10 = std::pow(10.0, combinedUnit.value_exp);
-            }
-        }
-        // And we have the conversion factor
-        return convFactor * powerOf10;
+    conversionFactorTo(const Qty<V>) const {
+        return conversionFactor(Qty<U>::unitDef,Qty<V>::unitDef);
     }
 
     // Generic unit conversion operator, _CONSTEXPR_ will be used automatically
     template <UTxt V> _OPTIMIZE_ _CONSTEXPR_ inline operator Qty<V>() const {
-        // Create guaranteed _CONSTEXPR_ units for source and destination
-        _CONSTEXPR_ Qty<V> unitV{1.0};
-        _CONSTEXPR_ Qty<U> unitU{1.0};
         // Calculate a conversion factor
-        _CONSTEXPR_ auto convFactor = unitU.conversionFactorTo(unitV);
+        _CONSTEXPR_ auto convFactor = conversionFactor(Qty<U>::unitDef, Qty<V>::unitDef);
         // Return a completely new object with the requested unit
         // here we multiply the value by the conversion factor
         // with the caveat that the value may not be _CONSTEXPR_
@@ -1539,8 +1505,8 @@ public:
     // of the left argument This is done to guarantee that adding with +=
     // operations do not change the unit of the result
     template <UTxt V>
-    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator+=(const Qty<V> &rhs) {
-        const auto convFactor = rhs.conversionFactorTo(*this);
+    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator+=(const Qty<V> rhs) {
+        const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<U>::unitDef);
         number += rhs.number * convFactor;
         return *this;
     }
@@ -1549,8 +1515,8 @@ public:
     // of the left argument This is done to guarantee that adding with +=
     // operations do not change the unit of the result
     template <UTxt V>
-    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator-=(const Qty<V> &rhs) {
-        const auto convFactor = rhs.conversionFactorTo(*this);
+    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator-=(const Qty<V> rhs) {
+        const auto convFactor = conversionFactor(Qty<V>::unitDef,Qty<U>::unitDef);
         number -= rhs.number * convFactor;
         return *this;
     }
@@ -1572,10 +1538,17 @@ public:
     template <UTxt V> friend class Qty;
 
     template <UTxt W, UTxt V>
-    friend _CONSTEXPR_ auto operator*(const Qty<W> &lhs, const Qty<V> &rhs);
+    friend consteval inline long double
+    conversionFactor(const Qty<W> /*from*/, const Qty<V> /*to*/);
 
     template <UTxt W, UTxt V>
-    friend _CONSTEXPR_ auto operator/(const Qty<W> &lhs, const Qty<V> &rhs);
+    friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, const Qty<V> rhs);
+
+    template <UTxt W, UTxt V>
+    friend _CONSTEXPR_ auto operator*(const Qty<W> lhs, const Qty<V> rhs);
+
+    template <UTxt W, UTxt V>
+    friend _CONSTEXPR_ auto operator/(const Qty<W> lhs, const Qty<V> rhs);
 
     // Operator *= or /= with another unit does not exist, a variable cannot
     // change units once declared. For that use case, use the RQty class.
@@ -1601,6 +1574,7 @@ public:
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator-(const RQty &lhs, const Qty<V> &rhs);
 
+
 #endif
 
 private:
@@ -1613,22 +1587,80 @@ private:
     static constexpr UnitDefinition unitDef = {U};
 };
 
+
+// Calculate a multiplicative conversion factor to convert from
+// the current unit to the unit of the given argument
+_OPTIMIZE_ consteval inline long double
+conversionFactor(const UnitDefinition from, const UnitDefinition to) {
+    // To convert a unit from U to V:
+    // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
+    // k*U = k*V * (expand(U)/expand(V))
+    // conv. factor = (expand(U)/expand(V))
+
+    // Create a unit V with a value of 1 that is a _CONSTEXPR_
+    // We cannot use the one from the argument because the quantity may not be
+    // _CONSTEXPR_ even though the unit of the quantity always is
+    const auto quotientUnit =
+        from.divide(to); // This is (U / V)
+    long double convFactor = 1.0;
+    long double powerOf10 = 1.0;
+    {
+        const auto combinedUnit =
+            quotientUnit.simplify(); // This makes expand(U/V) ==
+        // expand(U)/expand(V) == conversion factor
+        // After simplification, the result should be a non-dimensional
+        // factor, otherwise the units are incompatible and we cannot convert
+        // Check that the resulting unit has an 'empty' list of tokens
+        // (therefore non-dimensional)
+        if (combinedUnit.definition[0].tokEnd !=
+            combinedUnit.definition[0].tokStart) {
+            // Also check that there were no errors
+            if (combinedUnit.error_state != UnitError::NoError) {
+                throw UnitErrorMessages[combinedUnit.error_state];
+            }
+            // This isn't a real throw, just generates a compile error. The
+            // string will be buried in other messages but still visible by the
+            // user
+            throw "Incompatible Units";
+        }
+
+        // Units were compatible, so extract the value
+        convFactor = (combinedUnit.value_den != 1)
+                         ? ((long double)combinedUnit.value_ip) /
+                               combinedUnit.value_den
+                         : combinedUnit.value_ip;
+        // Apply the exponent
+        powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
+    }
+    // And we have the conversion factor
+    return convFactor * powerOf10;
+}
+
+
+// Calculate a multiplicative conversion factor to convert from
+// the current unit to the unit of the given argument
+template <UTxt U, UTxt V>
+_OPTIMIZE_ consteval inline long double
+conversionFactor(const Qty<U> /*from*/, const Qty<V> /*to*/) {
+    return conversionFactor(Qty<U>::unitDef,Qty<V>::unitDef);
+}
+
 // Addition operator for 2 units
 // Convention: Resulting unit of an addition or subtraction is always the unit
 // of the left argument This is done to guarantee that adding with += operations
 // do not change the unit of the result
-template <UTxt U, UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator+(const Qty<U> &lhs,
-                                               const Qty<V> &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+template <UTxt W, UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
+                                               const Qty<V> rhs) {
+    const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
     long double finalvalue = lhs.value() + rhs.value() * convFactor;
-    return Qty<U>{finalvalue};
+    return Qty<W>{finalvalue};
 }
 
 template <UTxt U, UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-(const Qty<U> &lhs,
-                                               const Qty<V> &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-(const Qty<U> lhs,
+                                               const Qty<V> rhs) {
+    const auto convFactor = conversionFactorTo(Qty<V>::unitDef, Qty<U>::unitDef);
     long double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<U>{finalvalue};
 }
@@ -1640,8 +1672,8 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-(const Qty<U> &lhs,
 // For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
 // treated as a different unit)
 template <UTxt U, UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<U> &lhs,
-                                             const Qty<V> &rhs) {
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<U> lhs,
+                                             const Qty<V> rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     _ALWAYS_CONSTEXPR_ Qty<U> lhsUnit{1.0};
@@ -1656,8 +1688,8 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<U> &lhs,
 }
 
 template <UTxt U, UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const Qty<U> &lhs,
-                                             const Qty<V> &rhs) {
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const Qty<U> lhs,
+                                             const Qty<V> rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     _CONSTEXPR_ Qty<U> lhsUnit{1.0};
@@ -1674,23 +1706,22 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const Qty<U> &lhs,
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const long double lhs,
-                                               const Qty<V> &rhs) {
+                                               const Qty<V> rhs) {
     long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const double lhs,
-                                               const Qty<V> &rhs) {
-    long double finalvalue = lhs * rhs.value();
-    return Qty<V>{finalvalue};
+                                               const Qty<V> rhs) {
+    return Qty<V>{lhs*rhs.value()};
 }
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int64_t lhs,
-                                               const Qty<V> &rhs) {
+                                               const Qty<V> rhs) {
     long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
@@ -1699,7 +1730,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int64_t lhs,
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int lhs,
-                                               const Qty<V> &rhs) {
+                                               const Qty<V> rhs) {
     long double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
@@ -1769,23 +1800,7 @@ public:
                                      ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
                                      : combinedUnit.value_ip;
         // Apply the exponent
-        long double powerOf10 = 1.0;
-        if (combinedUnit.value_exp) {
-            if (intabs(combinedUnit.value_exp) < 18) {
-                int64_t ipowerOf10 = 1;
-                // Should use a table for this, but for now...
-                for (auto k = 0; k < intabs(combinedUnit.value_exp); ++k) {
-                    ipowerOf10 *= 10;
-                }
-                if (combinedUnit.value_exp < 0) {
-                    powerOf10 /= ipowerOf10;
-                } else {
-                    powerOf10 *= ipowerOf10;
-                }
-            } else {
-                powerOf10 = std::pow(10.0, combinedUnit.value_exp);
-            }
-        }
+        const long double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
         // And we have the conversion factor
         return convFactor * powerOf10;
     }
@@ -1793,7 +1808,7 @@ public:
     // the current unit to the unit of the given argument
     template <UTxt V>
     _OPTIMIZE_ _CONSTEXPR_ inline long double
-    conversionFactorTo(const Qty<V> &unitTo) const {
+    conversionFactorTo(const Qty<V> unitTo) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
         // k*U = k*V * (expand(U)/expand(V))
@@ -1822,23 +1837,7 @@ public:
                                      ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
                                      : combinedUnit.value_ip;
         // Apply the exponent
-        long double powerOf10 = 1.0;
-        if (combinedUnit.value_exp) {
-            if (intabs(combinedUnit.value_exp) < 18) {
-                int64_t ipowerOf10 = 1;
-                // Should use a table for this, but for now...
-                for (auto k = 0; k < intabs(combinedUnit.value_exp); ++k) {
-                    ipowerOf10 *= 10;
-                }
-                if (combinedUnit.value_exp < 0) {
-                    powerOf10 /= ipowerOf10;
-                } else {
-                    powerOf10 *= ipowerOf10;
-                }
-            } else {
-                powerOf10 = std::pow(10.0, combinedUnit.value_exp);
-            }
-        }
+        const long double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
         // And we have the conversion factor
         return convFactor * powerOf10;
     }
@@ -1875,23 +1874,7 @@ public:
                                      ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
                                      : combinedUnit.value_ip;
         // Apply the exponent
-        long double powerOf10 = 1.0;
-        if (combinedUnit.value_exp) {
-            if (intabs(combinedUnit.value_exp) < 18) {
-                int64_t ipowerOf10 = 1;
-                // Should use a table for this, but for now...
-                for (auto k = 0; k < intabs(combinedUnit.value_exp); ++k) {
-                    ipowerOf10 *= 10;
-                }
-                if (combinedUnit.value_exp < 0) {
-                    powerOf10 /= ipowerOf10;
-                } else {
-                    powerOf10 *= ipowerOf10;
-                }
-            } else {
-                powerOf10 = std::pow(10.0, combinedUnit.value_exp);
-            }
-        }
+        const long double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
         // And we have the conversion factor
         return convFactor * powerOf10;
     }
@@ -2164,4 +2147,5 @@ template <UTxt U> _OPTIMIZE_ _CONSTEXPR_ inline Qty<U>::operator RQty() const {
     // Create guaranteed _CONSTEXPR_ units for source and destination
     return RQty{number, unitDef};
 }
+
 #endif

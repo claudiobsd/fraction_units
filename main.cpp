@@ -751,34 +751,38 @@ void test_UnitDefinition_parser_multipleTokens11()
     TEST_CHECK(check.definition[3].tokEnd==0);
 }
 
-
-void other_function() {
-    // Try to break the parser with some broken expressions
-    UnitDefinition meter("m","1.2345_kg/m^  3    ( / s^3)^2/3");
-
-    std::cout << meter.u_name << "=" << meter.u_def << std::endl;
-    std::cout << "Error state = " << UnitErrorMessages[meter.error_state] << std::endl;
-    std::cout << "value=" << meter.value_ip << "/" << meter.value_den << " x 10^" << meter.value_exp << std::endl;
-
-    for(size_t i=0;i<maxTokens;++i) {
-        if(meter.definition[i].expDen==0)
-            break;
-        std::cout << "'" << std::string_view(meter.u_def+meter.definition[i].tokStart,meter.u_def+meter.definition[i].tokEnd) << "'^ " << meter.definition[i].expNum << "/" << meter.definition[i].expDen << std::endl;
-    }
-
+void test_Qty_operators1() {
     // Try to use some quantities, this is all constexpr so verify the compiler
     // generates code that simply stores the number and nothing else
     // First test just test defining a constexpr with assignment of the same unit
     Qty<"m"> x = 50.0*_("m");
 
-    // Try an addition of 2 constexpr values, the compiler should again
-    // only emit code that stores the result. The unit of the result
-    // is by convention the unit of the left operand, so 'm'
-    // and the cm should be automatically converted at compile time
+    TEST_CHECK(x.value() == 50.0);
+}
+
+void test_Qty_operators2() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    const Qty<"m"> x = 50.0*_("m");
+
     auto y=x+(10.0*_("cm"));
 
-    std::cout << "y=" << y.value() << "_" << y.unit() << std::endl;
+    // Just storing a value with no conversion should be exact to 'long double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in long double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    double actual_y = y.value();
+    TEST_CHECK(actual_y == 50.1);
+}
 
+/*
+void other_function() {
+    Qty<"m"> x = 50.0*_("m");
+
+    auto y=x+(10.0*_("cm"));
     // Try to create a variable (not constexpr)
     auto density_whatever = 4.5*_("kg/ft^3");
 
@@ -863,7 +867,7 @@ void other_function() {
 
     std::cout << "length in Å = " << angstrom.value() << "_Å" << std::endl;
 }
-
+*/
 TEST_LIST = {
     {"UnitDefinition-CanParse",test_UnitDefinition_parser},
     {"UnitDefinition-ParseNumber", test_UnitDefinition_parser_number},
@@ -918,6 +922,8 @@ TEST_LIST = {
     {"UnitDefinition-MultipleTokens9", test_UnitDefinition_parser_multipleTokens9},
     {"UnitDefinition-MultipleTokens10", test_UnitDefinition_parser_multipleTokens10},
     {"UnitDefinition-MultipleTokens11", test_UnitDefinition_parser_multipleTokens11},
-//    {"UnitDefinition-MultipleTokens12", test_UnitDefinition_parser_multipleTokens12},
+
+    {"Qty-Operators1",test_Qty_operators1},
+    {"Qty-Operators2",test_Qty_operators2},
     {NULL,NULL}
 };
