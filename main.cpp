@@ -768,15 +768,87 @@ void test_Qty_operators2() {
 
     auto y=x+(10.0*_("cm"));
 
-    // Just storing a value with no conversion should be exact to 'long double' precision
+    // Just storing a value with no conversion should be exact to 'double' precision
     // Since no math operations were performed
     TEST_CHECK(x.value() == 50.0);
-    // Unit conversion is done in long double precision, so result
+    // Unit conversion is done in double precision, so result
     // should be EXACT in double precision, except in very rare corner cases
     // Force a conversion to double so the compiler downgrades to double precision.
     double actual_y = y.value();
     TEST_CHECK(actual_y == 50.1);
 }
+
+void test_Qty_operators3() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    Qty<"m"> x = 50.0*_("m");
+
+    auto y=x-10.0*_("cm");
+
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    double actual_y = y.value();
+    TEST_CHECK(actual_y == 49.9);
+}
+
+void test_Qty_operators4() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    Qty<"m"> x = 50.0*_("m");
+
+    // Multiplication operator is different from addition/subtraction in that it
+    // creates a new unit from the multiplication of the units. No unit simplification
+    // is performed, in this case it will simply multiply the numbers and
+    // apply a unit "m*cm"
+    const auto y=x*10.0*_("cm");
+
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    TEST_CHECK(y.value() == 500.0);
+    TEST_CHECK(y.unit()[0]=='m');
+    TEST_CHECK(y.unit()[1]=='*');
+    TEST_CHECK(y.unit()[2]=='c');
+    TEST_CHECK(y.unit()[3]=='m');
+    TEST_CHECK(y.unit()[4]==0);
+
+}
+
+void test_Qty_operators5() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    Qty<"m"> x = 50.0*_("m");
+
+    // Multiplication operator is different from addition/subtraction in that it
+    // creates a new unit from the multiplication of the units. No unit simplification
+    // is performed, in this case it will simply multiply the numbers and
+    // apply a unit "cm*m" since it is NOT commutative
+    const auto y=10.0*_("cm")*x;
+
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    TEST_CHECK(y.value() == 500.0);
+    TEST_CHECK(y.unit()[0]=='c');
+    TEST_CHECK(y.unit()[1]=='m');
+    TEST_CHECK(y.unit()[2]=='*');
+    TEST_CHECK(y.unit()[3]=='m');
+    TEST_CHECK(y.unit()[4]==0);
+}
+
 
 /*
 void other_function() {
@@ -925,5 +997,8 @@ TEST_LIST = {
 
     {"Qty-Operators1",test_Qty_operators1},
     {"Qty-Operators2",test_Qty_operators2},
+    {"Qty-Operators3",test_Qty_operators3},
+    {"Qty-Operators4",test_Qty_operators4},
+    {"Qty-Operators5",test_Qty_operators5},
     {NULL,NULL}
 };

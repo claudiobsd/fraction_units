@@ -6,7 +6,7 @@
 #include <cstdint>
 
 // Define this as-needed to enable the run time component class
-//#define RUNTIME_COMPONENT 1
+//define RUNTIME_COMPONENT 1
 
 #ifdef NDEBUG
 #warning "Compiled in Release"
@@ -83,7 +83,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t intabs(int64_t number) {
     return (number < 0) ? -number : number;
 }
 
-_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ long double powerOf10Exponent(const int64_t exp10) {
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double powerOf10Exponent(const int64_t exp10) {
     if (!exp10) {
         return 1.0;
     }
@@ -97,7 +97,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ long double powerOf10Exponent(const int64_t
         if (exp10 < 0) {
             return 1.0 / ipowerOf10;
         } else {
-            return (long double)ipowerOf10;
+            return (double)ipowerOf10;
         }
     } else {
         return std::pow(10.0, exp10);
@@ -1474,16 +1474,13 @@ public:
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty() : number(0.0) {}
     // Constructor with an integer number
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(int64_t _value)
-        : number((long double)_value) {}
+        : number((double)_value) {}
     // Constructor with a floating point number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) : number((long double)_value) {}
-    // Constructor for temporaries
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(long double _value)
-        : number(_value) {}
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) : number(_value) {}
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline long double
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline double
     conversionFactorTo(const Qty<V>) const {
         return conversionFactor(Qty<U>::unitDef,Qty<V>::unitDef);
     }
@@ -1521,7 +1518,7 @@ public:
         return *this;
     }
 
-    // Multiplication w/assignment can only exist with a
+    // Multiplication w/assignment can only exist with a scalar
     _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator*=(double rhs) {
         number *= rhs;
         return *this;
@@ -1532,17 +1529,20 @@ public:
         return *this;
     }
 
-    _OPTIMIZE_ _CONSTEXPR_ inline long double value() const { return number; }
-    _CONSTEXPR_ const char *unit() { return unitDef.u_def; }
+    _OPTIMIZE_ _CONSTEXPR_ inline double value() const { return number; }
+    _OPTIMIZE_ _CONSTEXPR_ const char *unit() const { return unitDef.u_def; }
 
     template <UTxt V> friend class Qty;
 
     template <UTxt W, UTxt V>
-    friend consteval inline long double
+    friend consteval inline double
     conversionFactor(const Qty<W> /*from*/, const Qty<V> /*to*/);
 
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, const Qty<V> rhs);
+
+    template <UTxt W, UTxt V>
+    friend _CONSTEXPR_ Qty<W> operator-(const Qty<W> lhs, const Qty<V> rhs);
 
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ auto operator*(const Qty<W> lhs, const Qty<V> rhs);
@@ -1579,7 +1579,7 @@ public:
 
 private:
     // This becomes the one and only data member: the number
-    long double number;
+    double number;
 
     // The actual unitDef for the physical quantity is a static _CONSTEXPR_ member
     // of the class therefore the compiler will not create/store any data unless
@@ -1590,7 +1590,7 @@ private:
 
 // Calculate a multiplicative conversion factor to convert from
 // the current unit to the unit of the given argument
-_OPTIMIZE_ consteval inline long double
+_OPTIMIZE_ consteval inline double
 conversionFactor(const UnitDefinition from, const UnitDefinition to) {
     // To convert a unit from U to V:
     // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
@@ -1602,8 +1602,8 @@ conversionFactor(const UnitDefinition from, const UnitDefinition to) {
     // _CONSTEXPR_ even though the unit of the quantity always is
     const auto quotientUnit =
         from.divide(to); // This is (U / V)
-    long double convFactor = 1.0;
-    long double powerOf10 = 1.0;
+    double convFactor = 1.0;
+    double powerOf10 = 1.0;
     {
         const auto combinedUnit =
             quotientUnit.simplify(); // This makes expand(U/V) ==
@@ -1626,7 +1626,7 @@ conversionFactor(const UnitDefinition from, const UnitDefinition to) {
 
         // Units were compatible, so extract the value
         convFactor = (combinedUnit.value_den != 1)
-                         ? ((long double)combinedUnit.value_ip) /
+                         ? ((double)combinedUnit.value_ip) /
                                combinedUnit.value_den
                          : combinedUnit.value_ip;
         // Apply the exponent
@@ -1640,7 +1640,7 @@ conversionFactor(const UnitDefinition from, const UnitDefinition to) {
 // Calculate a multiplicative conversion factor to convert from
 // the current unit to the unit of the given argument
 template <UTxt U, UTxt V>
-_OPTIMIZE_ consteval inline long double
+_OPTIMIZE_ consteval inline double
 conversionFactor(const Qty<U> /*from*/, const Qty<V> /*to*/) {
     return conversionFactor(Qty<U>::unitDef,Qty<V>::unitDef);
 }
@@ -1653,15 +1653,15 @@ template <UTxt W, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
                                                const Qty<V> rhs) {
     const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
-    long double finalvalue = lhs.value() + rhs.value() * convFactor;
+    double finalvalue = lhs.value() + rhs.value() * convFactor;
     return Qty<W>{finalvalue};
 }
 
 template <UTxt U, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-(const Qty<U> lhs,
                                                const Qty<V> rhs) {
-    const auto convFactor = conversionFactorTo(Qty<V>::unitDef, Qty<U>::unitDef);
-    long double finalvalue = lhs.value() - rhs.value() * convFactor;
+    const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<U>::unitDef);
+    double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<U>{finalvalue};
 }
 
@@ -1676,15 +1676,12 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<U> lhs,
                                              const Qty<V> rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
-    _ALWAYS_CONSTEXPR_ Qty<U> lhsUnit{1.0};
-    _ALWAYS_CONSTEXPR_ Qty<V> rhsUnit{1.0};
-    _ALWAYS_CONSTEXPR_ auto finalUnit =
-        lhsUnit.unitDef.multiply(rhsUnit.unitDef).update();
-    _ALWAYS_CONSTEXPR_ auto finalUnitDefinition =
+    constexpr const auto finalUnit =
+        Qty<U>::unitDef.multiply(Qty<V>::unitDef).update();
+    constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() * rhs.value();
-    return Qty<finalUnitDefinition>{finalvalue};
+    return Qty<finalUnitDefinition>{lhs.number * rhs.number};
 }
 
 template <UTxt U, UTxt V>
@@ -1698,19 +1695,12 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const Qty<U> lhs,
     constexpr auto finalUnitDefinition = to_UTxt<finalUnit.u_defLen>(finalUnit);
 
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() / rhs.value();
+    double finalvalue = lhs.value() / rhs.value();
     return Qty<finalUnitDefinition>{finalvalue};
 }
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
-template <UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const long double lhs,
-                                               const Qty<V> rhs) {
-    long double finalvalue = lhs * rhs.value();
-    return Qty<V>{finalvalue};
-}
-
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const double lhs,
                                                const Qty<V> rhs) {
@@ -1722,7 +1712,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const double lhs,
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int64_t lhs,
                                                const Qty<V> rhs) {
-    long double finalvalue = lhs * rhs.value();
+    double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
 
@@ -1731,7 +1721,32 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int64_t lhs,
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int lhs,
                                                const Qty<V> rhs) {
-    long double finalvalue = lhs * rhs.value();
+    double finalvalue = lhs * rhs.value();
+    return Qty<V>{finalvalue};
+}
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
+                                               const double rhs) {
+    return Qty<V>{rhs * lhs.value()};
+}
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
+                                               const int64_t rhs) {
+    return Qty<V>{rhs * lhs.value()};
+}
+
+// Multiplication operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
+                                               const int rhs) {
+    double finalvalue = rhs * lhs.value();
     return Qty<V>{finalvalue};
 }
 
@@ -1751,10 +1766,10 @@ public:
     // Default constructor creates the non-dimensional number 0.0
     _OPTIMIZE_ _CONSTEXPR_ inline RQty() : number(0.0), unitDef() {}
     template <size_t N>
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty(long double _value, const char (&_unit)[N])
+    _OPTIMIZE_ _CONSTEXPR_ inline RQty(double _value, const char (&_unit)[N])
         : number(_value), unitDef("", _unit) {}
 
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty(long double _value,
+    _OPTIMIZE_ _CONSTEXPR_ inline RQty(double _value,
                                        const std::string &_unit)
         : number((double)_value), unitDef(_unit.c_str(), _unit.size()) {}
 
@@ -1762,15 +1777,11 @@ private:
     // Constructor used only internally
     _OPTIMIZE_ _CONSTEXPR_ inline RQty(double _value, const UnitDefinition &_udef)
         : number(_value), unitDef(_udef) {}
-    // Constructor used only internally
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty(long double _value,
-                                       const UnitDefinition &_udef)
-        : number(_value), unitDef(_udef) {}
 
 public:
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
-    _OPTIMIZE_ _CONSTEXPR_ inline long double
+    _OPTIMIZE_ _CONSTEXPR_ inline double
     conversionFactorTo(const RQty &unitTo) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
@@ -1795,19 +1806,19 @@ public:
             throw std::runtime_error("Incompatible Units");
         }
         // Units were compatible, so extract the value
-        long double convFactor =
+        double convFactor =
             (combinedUnit.value_den != 1)
-                                     ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
+                                     ? ((double)combinedUnit.value_ip) / combinedUnit.value_den
                                      : combinedUnit.value_ip;
         // Apply the exponent
-        const long double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
+        const double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
         // And we have the conversion factor
         return convFactor * powerOf10;
     }
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
-    _OPTIMIZE_ _CONSTEXPR_ inline long double
+    _OPTIMIZE_ _CONSTEXPR_ inline double
     conversionFactorTo(const Qty<V> unitTo) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
@@ -1832,19 +1843,19 @@ public:
             throw std::runtime_error("Incompatible Units");
         }
         // Units were compatible, so extract the value
-        long double convFactor =
+        double convFactor =
             (combinedUnit.value_den != 1)
-                                     ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
+                                     ? ((double)combinedUnit.value_ip) / combinedUnit.value_den
                                      : combinedUnit.value_ip;
         // Apply the exponent
-        const long double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
+        const double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
         // And we have the conversion factor
         return convFactor * powerOf10;
     }
     // Calculate a multiplicative conversion factor to convert from
     // the given unit to the current unit
     template <UTxt V>
-    _OPTIMIZE_ _CONSTEXPR_ inline long double
+    _OPTIMIZE_ _CONSTEXPR_ inline double
     conversionFactorFrom(const Qty<V> &unitFrom) const {
         // To convert a unit from U to V:
         // k*U = k*U* (expand(U)/U) * (V/expand(V)) = k*V* (expand(U)/expand(V))
@@ -1869,12 +1880,12 @@ public:
             throw std::runtime_error("Incompatible Units");
         }
         // Units were compatible, so extract the value
-        long double convFactor =
+        double convFactor =
             (combinedUnit.value_den != 1)
-                                     ? ((long double)combinedUnit.value_ip) / combinedUnit.value_den
+                                     ? ((double)combinedUnit.value_ip) / combinedUnit.value_den
                                      : combinedUnit.value_ip;
         // Apply the exponent
-        const long double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
+        const double powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
         // And we have the conversion factor
         return convFactor * powerOf10;
     }
@@ -1912,7 +1923,7 @@ public:
         number += rhs.number * convFactor;
         return *this;
     }
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator+=(const long double rhs) {
+    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator+=(const double rhs) {
         // We'll only allow this if the destination unit is compattible with
         // nondimensional values
         constexpr Qty<""> nonDimensional{1.0};
@@ -1934,7 +1945,7 @@ public:
         number -= rhs.number * convFactor;
         return *this;
     }
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator-=(const long double rhs) {
+    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator-=(const double rhs) {
         // We'll only allow this if the destination unit is compattible with
         // nondimensional values
         constexpr Qty<""> nonDimensional{1.0};
@@ -1946,7 +1957,7 @@ public:
     }
 
     // Multiplication w/assignment
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator*=(long double rhs) {
+    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator*=(double rhs) {
         number *= rhs;
         return *this;
     }
@@ -1965,7 +1976,7 @@ public:
     }
 
     // Division w/assignment
-    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator/=(long double rhs) {
+    _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator/=(double rhs) {
         number /= rhs;
         return *this;
     }
@@ -1984,7 +1995,7 @@ public:
         return *this;
     }
 
-    _OPTIMIZE_ _CONSTEXPR_ inline long double value() const { return number; }
+    _OPTIMIZE_ _CONSTEXPR_ inline double value() const { return number; }
     const char *unit() { return unitDef.u_def; }
 
     template <UTxt V>
@@ -1992,20 +2003,20 @@ public:
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator*(const Qty<V> &lhs, const RQty &rhs);
     friend _CONSTEXPR_ inline auto operator*(const RQty &lhs, const RQty &rhs);
-    friend _CONSTEXPR_ inline auto operator*(const long double lhs,
+    friend _CONSTEXPR_ inline auto operator*(const double lhs,
                                              const RQty &rhs);
     friend _CONSTEXPR_ inline auto operator*(const RQty &lhs,
-                                             const long double rhs);
+                                             const double rhs);
 
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator/(const RQty &lhs, const Qty<V> &rhs);
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator/(const Qty<V> &lhs, const RQty &rhs);
     friend _CONSTEXPR_ inline auto operator/(const RQty &lhs, const RQty &rhs);
-    friend _CONSTEXPR_ inline auto operator/(const long double lhs,
+    friend _CONSTEXPR_ inline auto operator/(const double lhs,
                                              const RQty &rhs);
     friend _CONSTEXPR_ inline auto operator/(const RQty &lhs,
-                                             const long double rhs);
+                                             const double rhs);
 
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator+(const RQty &lhs, const Qty<V> &rhs);
@@ -2017,7 +2028,7 @@ public:
     template <UTxt V> friend class Qty;
 
 private:
-    long double number;
+    double number;
     UnitDefinition unitDef;
 };
 
@@ -2076,7 +2087,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const RQty &lhs,
                                              const Qty<V> &rhs) {
     auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() * rhs.value();
+    double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 template <UTxt V>
@@ -2084,13 +2095,13 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<V> &lhs,
                                              const RQty &rhs) {
     auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() * rhs.value();
+    double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const RQty &lhs, const RQty &rhs) {
     auto finalUnit = lhs.unitDef.multiply(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() * rhs.value();
+    double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 
@@ -2099,7 +2110,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const RQty &lhs,
                                              const Qty<V> &rhs) {
     auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() / rhs.value();
+    double finalvalue = lhs.value() / rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 template <UTxt V>
@@ -2107,39 +2118,39 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const Qty<V> &lhs,
                                              const RQty &rhs) {
     auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() * rhs.value();
+    double finalvalue = lhs.value() * rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const RQty &lhs, const RQty &rhs) {
     auto finalUnit = lhs.unitDef.divide(rhs.unitDef).update();
     // This it the only operation the compiler will do at run time if needed
-    long double finalvalue = lhs.value() / rhs.value();
+    double finalvalue = lhs.value() / rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 
 // Multiplication operator by a non-dimensional scalar
 // Simply preserves the original unit
-_OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const long double lhs,
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const double lhs,
                                              const RQty &rhs) {
-    long double finalvalue = lhs * rhs.value();
+    double finalvalue = lhs * rhs.value();
     return RQty{finalvalue, rhs.unitDef};
 }
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const RQty &lhs,
-                                             const long double rhs) {
-    long double finalvalue = rhs * lhs.value();
+                                             const double rhs) {
+    double finalvalue = rhs * lhs.value();
     return RQty{finalvalue, lhs.unitDef};
 }
 // Division operator by a non-dimensional scalar
 // Simply preserves (or inverts, depending on order of arguments)
-_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const long double lhs,
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const double lhs,
                                              const RQty &rhs) {
     auto finalUnit = rhs.unitDef.invert().update();
-    long double finalvalue = lhs / rhs.value();
+    double finalvalue = lhs / rhs.value();
     return RQty{finalvalue, finalUnit};
 }
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const RQty &lhs,
-                                             const long double rhs) {
-    long double finalvalue = lhs.value() / rhs;
+                                             const double rhs) {
+    double finalvalue = lhs.value() / rhs;
     return RQty{finalvalue, lhs.unitDef};
 }
 
