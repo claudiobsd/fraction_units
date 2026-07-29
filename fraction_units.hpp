@@ -8,13 +8,16 @@
 // Define this as-needed to enable the run time component class
 //define RUNTIME_COMPONENT 1
 
-#ifdef NDEBUG
-#warning "Compiled in Release"
-#define _OPTIMIZE_ __attribute__((always_inline))
+#if defined(__clang__)
+// Use clang syntax attributes
+#define _OPTIMIZE_ [[clang::always_inline]]
+#elif defined(__GNUC__)||defined(__GNUG__)
+#define _OPTIMIZE_ [[gnu::always_inline]]
+#elif defined (_MSC_VER_)
+#define _OPTIMIZE_ [[msvc::forceinline]]
 #else
-#warning "Compiled in Debug"
-#define _OPTIMIZE_ __attribute__((always_inline))
-//__attribute__((optimize("Og")))
+// Unknoen compiler, don't try to optimize anything
+#define _OPTIMIZE_
 #endif
 
 #define _ALWAYS_CONSTEXPR_ constexpr
@@ -372,7 +375,7 @@ struct UnitDefinition {
 
     // Default constructor creates the non-dimensional number 1.0
     _OPTIMIZE_ inline constexpr UnitDefinition()
-        : u_name(""), u_def(""), value_ip(1), value_den(1), value_exp(0),
+        : u_name(), u_def(), value_ip(1), value_den(1), value_exp(0),
         error_state(NoError), error_index(0), definition({}) {}
     // Constructor using a single string literal, creates a unit definition with
     // no name
