@@ -764,7 +764,7 @@ void test_Qty_operators2() {
     // Try to use some quantities, this is all constexpr so verify the compiler
     // generates code that simply stores the number and nothing else
     // First test just test defining a constexpr with assignment of the same unit
-    const Qty<"m"> x = 50.0*_("m");
+    constexpr Qty<"m"> x = 50.0*_("m");
 
     auto y=x+(10.0*_("cm"));
 

@@ -13,10 +13,10 @@
 #define _OPTIMIZE_ [[clang::always_inline]]
 #elif defined(__GNUC__)||defined(__GNUG__)
 #define _OPTIMIZE_ [[gnu::always_inline]]
-#elif defined (_MSC_VER_)
+#elif defined (_MSC_VER)
 #define _OPTIMIZE_ [[msvc::forceinline]]
 #else
-// Unknoen compiler, don't try to optimize anything
+// Unknown compiler, don't try to optimize anything
 #define _OPTIMIZE_
 #endif
 
@@ -26,8 +26,7 @@
 
 // This is a hack to create constants in a user-friendly way, I don't like it
 // much
-#define _(TXT)                                                                 \
-Qty<TXT> { 1.0 }
+#define _(TXT) Qty<TXT> { 1.0 }
 
 enum UnitError {
     NoError = 0,
@@ -357,6 +356,20 @@ simplifyfraction(int64_t a_num, int64_t a_den) {
         return {a_num / divisor, a_den / divisor};
     }
     return {a_num, a_den};
+}
+
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ std::pair<int64_t, int64_t>
+simplifyfraction128(integer128 a_num, integer128 a_den) {
+    auto divisor = gcd128(integer128::abs128(a_num), integer128::abs128(a_den));
+    if (divisor.hiword>0 || divisor.loword > 1) {
+    a_num = a_num / divisor;
+    a_den = a_den / divisor;
+    }
+    if ((a_num.hiword != 0ULL && a_num.hiword != ~0ULL) ||
+        (a_den.hiword != 0ULL && a_den.hiword != ~0ULL)) {
+        throw "Precision loss";
+    }
+    return {a_num.loword, a_den.loword};
 }
 
 // ********************************************************************************************************************
@@ -1058,6 +1071,17 @@ struct UnitDefinition {
         } else {
             // Fractional powers, use floationg point then come back to integers
             // TODO: Either do this in doubles or use a decimal number library
+            long double numerator = std::pow((long double)result.value_ip,(long double) expNum / (long double)expDen);
+            long double denominator = std::pow((long double)result.value_den,(long double) expNum / (long double)expDen);
+
+            // Now try to extract a fraction
+            integer128 num128 = numerator * (long double)4294967296 * (long double)4294967296;  // Multiply by 2^64 to make it an integer, this will only change the IEEE exponent
+            integer128 den128 = denominator * (long double)4294967296 * (long double)4294967296;  // Multiply by 2^64 to make it an integer, this will only change the IEEE exponent
+
+            auto fraction = simplifyfraction128(num128, den128);
+
+            result.value_ip = fraction.first;
+            result.value_den = fraction.second;
         }
 
         for (size_t i = 0; i < maxTokens; ++i) {
@@ -1476,10 +1500,10 @@ public:
     // Default constructor creates the non-dimensional number 0.0
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty() : number(0.0) {}
     // Constructor with an integer number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(int64_t _value)
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(int64_t _value)
         : number((double)_value) {}
     // Constructor with a floating point number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) : number(_value) {}
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(double _value) : number(_value) {}
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
@@ -1752,6 +1776,73 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
     double finalvalue = rhs * lhs.value();
     return Qty<V>{finalvalue};
 }
+
+
+// Division operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const double lhs,
+                                               const Qty<V> rhs) {
+    constexpr const auto finalUnit =
+        Qty<V>::unitDef.invert().update();
+    constexpr const auto finalUnitDefinition =
+        to_UTxt<finalUnit.u_defLen>(finalUnit);
+    // This it the only operation the compiler will do at run time if needed
+    return Qty<finalUnitDefinition>{lhs / rhs.number};
+}
+
+// Division operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const int64_t lhs,
+                                               const Qty<V> rhs) {
+    constexpr const auto finalUnit =
+        Qty<V>::unitDef.invert().update();
+    constexpr const auto finalUnitDefinition =
+        to_UTxt<finalUnit.u_defLen>(finalUnit);
+    // This it the only operation the compiler will do at run time if needed
+    return Qty<finalUnitDefinition>{lhs / rhs.number};
+}
+
+// Division operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const int lhs,
+                                               const Qty<V> rhs) {
+    constexpr const auto finalUnit =
+        Qty<V>::unitDef.invert().update();
+    constexpr const auto finalUnitDefinition =
+        to_UTxt<finalUnit.u_defLen>(finalUnit);
+    // This it the only operation the compiler will do at run time if needed
+    return Qty<finalUnitDefinition>{lhs / rhs.number};
+}
+
+// Division operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
+                                               const double rhs) {
+    return Qty<V>{lhs.number / rhs};
+}
+
+// Division operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
+                                               const int64_t rhs) {
+    return Qty<V>{lhs.number / rhs};
+}
+
+// Division operator by a non-dimensional scalar
+// Simply preserves the original unit
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
+                                               const int rhs) {
+    return Qty<V>{lhs.number / rhs};
+}
+
+
+
 
 // ********************************************************************************************************************
 // ********************************************************************************************************************
