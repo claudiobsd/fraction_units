@@ -81,6 +81,73 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,
     return result;
 }
 
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ size_t outputDigitsNoExponent(int64_t number, char *output, size_t buffersize) {
+    size_t idx=0;
+
+    // Find the first digit to output
+    int64_t powerOf10=10;
+    if(buffersize<2) {
+        // Cause a compile error
+        throw "Internal text buffer overflow - increase internal buffers";
+    }
+
+    if(number<0) {
+        output[idx++]='-';
+        number=-number;
+    }
+    while(number>=powerOf10) {
+        powerOf10*=10;
+        if(powerOf10 == 1'000'000'000'000'000'000LL) {
+            break;
+        }
+    }
+
+    if(number<powerOf10) {
+        powerOf10/=10;
+    }
+
+    while(number) {
+        char digit='0';
+        while(number>=powerOf10) {
+            ++digit;
+            number-=powerOf10;
+        }
+        output[idx++]=digit;
+        if(idx>=buffersize) {
+            // Cause a compile error
+            throw "Internal text buffer overflow - increase internal buffers";
+        }
+    }
+    return idx;
+}
+
+
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ size_t outputDigits(int64_t number, int64_t exponent, char *output, size_t buffersize) {
+    size_t idx=0;
+
+    idx+= outputDigitsNoExponent(number,output,buffersize);
+
+    if(exponent>0) {
+        if(idx+exponent>16) {
+        // Use scientific notation
+        output[idx++]='e';
+        idx+=outputDigitsNoExponent(exponent,output+idx,buffersize-idx);
+        }
+        else {
+        // Just add zome zeroes to the output
+            while(exponent>0) {
+            output[idx++]='0';
+                if(idx>=buffersize) {
+                    // Cause a compile error
+                    throw "Internal text buffer overflow - increase internal buffers";
+                }
+                exponent--;
+            }
+        }
+    }
+    return idx;
+}
+
 _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t intabs(int64_t number) {
     return (number < 0) ? -number : number;
 }
@@ -1129,14 +1196,47 @@ struct UnitDefinition {
         result.error_state = error_state;
         result.error_index = 0; // Changing the u_def member will reset this to zero
 
-        // Add the tokens with positive exponents first
-        size_t j = 0;
         size_t txtj = 0;
+
+        // If the number is anything but one, output the number first
+        if(value_ip!=1 || value_den!=1 || value_exp!=0) {
+            const bool needDen = (value_den!=1)||(value_exp<0);
+
+            // Output numerator first
+            txtj += outputDigits(value_ip,(value_exp>0)? value_exp: 0, result.u_def+txtj, maxDefinitionLength-txtj);
+            if(needDen) {
+                result.u_def[txtj++]='/';
+                txtj += outputDigits(value_ip,(value_exp<0)? -value_exp: 0, result.u_def+txtj, maxDefinitionLength-txtj);
+            }
+        }
+
+        bool isFirstToken=true;
+        // Need a count of tokens with negative exponent to group them later if needed
+        size_t numberOfTokensWithNegativeExp = 0;
+        size_t tokensWithPosExpStart = txtj;
+
+        size_t j = 0;
+
+        // Add the tokens with positive exponents first
         for (size_t i = 0; i < maxTokens; ++i) {
             if (definition[i].tokEnd == definition[i].tokStart) {
                 break;
             }
+            if(definition[i].expNum<0) {
+                ++numberOfTokensWithNegativeExp;
+            }
             if (definition[i].expNum > 0) {
+                // Add a prefix if needed
+                if(isFirstToken) {
+                    if(txtj>0) {
+                    result.u_def[txtj++]='_';
+                    if(txtj>=maxDefinitionLength) {
+                        throw "Internal Buffer overflow - Increase buffer size";
+                    }
+                    }
+                    tokensWithPosExpStart = txtj;
+                    isFirstToken=false;
+                }
                 // Copy the token to the result
                 result.definition[j].expNum = definition[i].expNum;
                 result.definition[j].expDen = definition[i].expDen;
@@ -1145,66 +1245,93 @@ struct UnitDefinition {
                     txtj + definition[i].tokEnd - definition[i].tokStart;
                 ++j;
                 // Add the token as a string
-                if (txtj > 0) {
+                if (txtj > tokensWithPosExpStart) {
                     result.u_def[txtj++] = '*';
+                    if(txtj>=maxDefinitionLength) {
+                        throw "Internal Buffer overflow - Increase buffer size";
+                    }
                 }
                 for (auto k = definition[i].tokStart; k < definition[i].tokEnd; ++k) {
                     result.u_def[txtj] = u_def[k];
                     ++txtj;
+                    if(txtj>=maxDefinitionLength) {
+                        throw "Internal Buffer overflow - Increase buffer size";
+                    }
                 }
                 // Add the exponent to the string
                 if (definition[i].expNum != 1 || definition[i].expDen != 1) {
                     // Need to add an exponent
                     result.u_def[txtj++] = '^';
                     //
-                    int64_t pow10max = 1'000'000'000'000'000'000LL;
-                    int64_t number = definition[i].expNum;
-                    bool firstNonZeroDigit = false;
-                    while (number > 0) {
-                        char digit = '0';
-                        while (number >= pow10max) {
-                            ++digit;
-                            number -= pow10max;
-                        }
-                        if (digit != '0' || firstNonZeroDigit) {
-                            result.u_def[txtj++] = digit;
-                            firstNonZeroDigit = true;
-                        }
-                        pow10max /= 10;
-                    }
+                    txtj += outputDigitsNoExponent(definition[i].expNum, result.u_def+txtj, maxDefinitionLength-txtj);
+
                     if (definition[i].expDen != 1) {
                         result.u_def[txtj++] = '/';
-                        pow10max = 1'000'000'000'000'000'000LL;
-                        number = definition[i].expDen;
-                        bool firstNonZeroDigit = false;
-                        while (number > 0) {
-                            char digit = '0';
-                            while (number >= pow10max) {
-                                ++digit;
-                                number -= pow10max;
-                            }
-                            if (digit != '0' || firstNonZeroDigit) {
-                                result.u_def[txtj++] = digit;
-                                firstNonZeroDigit = true;
-                            }
-                            pow10max /= 10;
-                        }
+                        txtj += outputDigitsNoExponent(definition[i].expDen, result.u_def+txtj, maxDefinitionLength-txtj);
                     }
                 }
             }
         }
         // Second pass, add all of the tokens with negative exponents
+        bool isFirstNegExpToken = true;
+        size_t firstNegTokenStart = txtj;
+
         for (size_t i = 0; i < maxTokens; ++i) {
             if (definition[i].tokEnd == definition[i].tokStart) {
                 break;
             }
             if (definition[i].expNum < 0) {
+                if(isFirstToken) {
+                    // If there was a number before, add an underscore
+                    if(txtj>0) {
+                        result.u_def[txtj++]='_';
+                        if(txtj>=maxDefinitionLength) {
+                            throw "Internal Buffer overflow - Increase buffer size";
+                        }
+                        if(numberOfTokensWithNegativeExp>0) {
+                            result.u_def[txtj++]='1';
+                            if(txtj>=maxDefinitionLength) {
+                                throw "Internal Buffer overflow - Increase buffer size";
+                            }
+                        }
+
+                    }
+                    firstNegTokenStart = txtj;
+                    isFirstToken = false;
+                }
+                if(isFirstNegExpToken) {
+                    if(numberOfTokensWithNegativeExp>0) {
+                        if(txtj==0) {
+                            result.u_def[txtj++]='1';
+                            if(txtj>=maxDefinitionLength) {
+                                throw "Internal Buffer overflow - Increase buffer size";
+                            }
+                        }
+                        result.u_def[txtj++]='/';
+                        if(txtj>=maxDefinitionLength) {
+                            throw "Internal Buffer overflow - Increase buffer size";
+                        }
+                    }
+                    if(numberOfTokensWithNegativeExp>1) {
+                        result.u_def[txtj++]='(';
+                        if(txtj>=maxDefinitionLength) {
+                            throw "Internal Buffer overflow - Increase buffer size";
+                        }
+                    }
+
+                    firstNegTokenStart = txtj;
+                    isFirstNegExpToken = false;
+                }
+
                 // Copy the token to the result
                 result.definition[j].expNum = definition[i].expNum;
                 result.definition[j].expDen = definition[i].expDen;
                 // Add the token as a string
-                if (txtj > 0) {
-                    result.u_def[txtj++] = '/';
+                if (txtj > firstNegTokenStart) {
+                    result.u_def[txtj++] = '*';
+                    if(txtj>=maxDefinitionLength) {
+                        throw "Internal Buffer overflow - Increase buffer size";
+                    }
                 }
                 result.definition[j].tokStart = txtj;
                 result.definition[j].tokEnd =
@@ -1219,41 +1346,20 @@ struct UnitDefinition {
                     // Need to add an exponent
                     result.u_def[txtj++] = '^';
                     //
-                    int64_t pow10max = 1'000'000'000'000'000'000LL;
-                    int64_t number = -definition[i].expNum;
-                    bool firstNonZeroDigit = false;
-                    while (number > 0) {
-                        char digit = '0';
-                        while (number >= pow10max) {
-                            ++digit;
-                            number -= pow10max;
-                        }
-                        if (digit != '0' || firstNonZeroDigit) {
-                            result.u_def[txtj++] = digit;
-                            firstNonZeroDigit = true;
-                        }
-                        pow10max /= 10;
-                    }
+                    txtj += outputDigitsNoExponent(-definition[i].expNum,result.u_def+txtj,maxDefinitionLength-txtj);
+
                     if (definition[i].expDen != 1) {
                         result.u_def[txtj++] = '/';
-                        pow10max = 1'000'000'000'000'000'000LL;
-                        number = definition[i].expDen;
-                        bool firstNonZeroDigit = false;
-                        while (number > 0) {
-                            char digit = '0';
-                            while (number >= pow10max) {
-                                ++digit;
-                                number -= pow10max;
-                            }
-                            if (digit != '0' || firstNonZeroDigit) {
-                                result.u_def[txtj++] = digit;
-                                firstNonZeroDigit = true;
-                            }
-                            pow10max /= 10;
-                        }
+                        txtj += outputDigitsNoExponent(definition[i].expDen,result.u_def+txtj,maxDefinitionLength-txtj);
+
                     }
                 }
             }
+        }
+
+        if(numberOfTokensWithNegativeExp>1) {
+            // Close that parenthesis we added
+            result.u_def[txtj++]=')';
         }
         result.u_def[txtj++] = 0;
         result.u_defLen = txtj;
@@ -1577,6 +1683,16 @@ public:
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ auto operator/(const Qty<W> lhs, const Qty<V> rhs);
 
+    template <UTxt V>
+    friend _CONSTEXPR_ inline auto operator/(const int lhs,
+                                                          const Qty<V> rhs);
+
+    template <UTxt V>
+    friend _CONSTEXPR_ inline auto operator/(const int64_t lhs,
+                                               const Qty<V> rhs);
+    template <UTxt V>
+    friend _CONSTEXPR_ inline auto operator/(const double lhs,
+                                               const Qty<V> rhs);
     // Operator *= or /= with another unit does not exist, a variable cannot
     // change units once declared. For that use case, use the RQty class.
 
@@ -1781,40 +1897,40 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
 // Division operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const double lhs,
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const double lhs,
                                                const Qty<V> rhs) {
     constexpr const auto finalUnit =
         Qty<V>::unitDef.invert().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    return Qty<finalUnitDefinition>{lhs / rhs.number};
+    return Qty<finalUnitDefinition>{lhs / rhs.value()};
 }
 
 // Division operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const int64_t lhs,
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const int64_t lhs,
                                                const Qty<V> rhs) {
     constexpr const auto finalUnit =
         Qty<V>::unitDef.invert().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    return Qty<finalUnitDefinition>{lhs / rhs.number};
+    return Qty<finalUnitDefinition>{lhs / rhs.value()};
 }
 
 // Division operator by a non-dimensional scalar
 // Simply preserves the original unit
 template <UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const int lhs,
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const int lhs,
                                                const Qty<V> rhs) {
     constexpr const auto finalUnit =
         Qty<V>::unitDef.invert().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    return Qty<finalUnitDefinition>{lhs / rhs.number};
+    return Qty<finalUnitDefinition>{lhs / rhs.value()};
 }
 
 // Division operator by a non-dimensional scalar
@@ -1822,7 +1938,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const int lhs,
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
                                                const double rhs) {
-    return Qty<V>{lhs.number / rhs};
+    return Qty<V>{lhs.value() / rhs};
 }
 
 // Division operator by a non-dimensional scalar
@@ -1830,7 +1946,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
                                                const int64_t rhs) {
-    return Qty<V>{lhs.number / rhs};
+    return Qty<V>{lhs.value() / rhs};
 }
 
 // Division operator by a non-dimensional scalar
@@ -1838,7 +1954,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
                                                const int rhs) {
-    return Qty<V>{lhs.number / rhs};
+    return Qty<V>{lhs.value() / rhs};
 }
 
 

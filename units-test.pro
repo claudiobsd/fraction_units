@@ -11,8 +11,8 @@ HEADERS += \
         fraction_units.hpp
 
 CONFIG(debug, debug|release) {
-QMAKE_CXXFLAGS += -g -O0
+QMAKE_CXXFLAGS += -g -O0 -Wpedantic
 }
 CONFIG(release, debug|release) {
-QMAKE_CXXFLAGS += -g -O3 -DNDEBUG
+QMAKE_CXXFLAGS += -g -O3 -DNDEBUG -Wpedantic
 }

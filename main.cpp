@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cmath>
 
 #include "fraction_units.hpp"
@@ -751,6 +750,118 @@ void test_UnitDefinition_parser_multipleTokens11()
     TEST_CHECK(check.definition[3].tokEnd==0);
 }
 
+void test_UnitDefinition_update1()
+{
+    // Test for rebuilding the text of a unit definition - basic check
+    UnitDefinition check("check","1/20_m");
+    UnitDefinition inverse = check.invert();
+    UnitDefinition updated = inverse.update();
+
+    TEST_CHECK(check.error_state==UnitError::NoError);
+
+    TEST_CHECK(check.value_ip==1);
+    TEST_CHECK(check.value_den==2);
+    TEST_CHECK(check.value_exp==-1);
+
+    // 'm'
+    TEST_CHECK(check.definition[0].tokStart==5);
+    TEST_CHECK(check.definition[0].tokEnd==6);
+    TEST_CHECK(check.definition[0].expNum==1);
+    TEST_CHECK(check.definition[0].expDen==1);
+    // End
+    TEST_CHECK(check.definition[1].tokStart==0);
+    TEST_CHECK(check.definition[1].tokEnd==0);
+
+
+    TEST_CHECK(inverse.error_state==UnitError::NoError);
+
+    TEST_CHECK(inverse.value_ip==2);
+    TEST_CHECK(inverse.value_den==1);
+    TEST_CHECK(inverse.value_exp==1);
+
+    // 'm'
+    TEST_CHECK(inverse.definition[0].tokStart==5);
+    TEST_CHECK(inverse.definition[0].tokEnd==6);
+    TEST_CHECK(inverse.definition[0].expNum==-1);
+    TEST_CHECK(inverse.definition[0].expDen==1);
+    // End
+    TEST_CHECK(inverse.definition[1].tokStart==0);
+    TEST_CHECK(inverse.definition[1].tokEnd==0);
+
+    TEST_CHECK(updated.error_state==UnitError::NoError);
+
+    TEST_CHECK(updated.value_ip==2);
+    TEST_CHECK(updated.value_den==1);
+    TEST_CHECK(updated.value_exp==1);
+
+    // 'm'
+    TEST_CHECK(updated.definition[0].tokStart==5);
+    TEST_CHECK(updated.definition[0].tokEnd==6);
+    TEST_CHECK(updated.definition[0].expNum==-1);
+    TEST_CHECK(updated.definition[0].expDen==1);
+    // End
+    TEST_CHECK(updated.definition[1].tokStart==0);
+    TEST_CHECK(updated.definition[1].tokEnd==0);
+
+    TEST_CHECK(updated.u_def[0]=='2');
+    TEST_CHECK(updated.u_def[1]=='0');
+    TEST_CHECK(updated.u_def[2]=='_');
+    TEST_CHECK(updated.u_def[3]=='1');
+    TEST_CHECK(updated.u_def[4]=='/');
+    TEST_CHECK(updated.u_def[5]=='m');
+    TEST_CHECK(updated.u_def[6]==0);
+}
+
+void test_UnitDefinition_update2()
+{
+    // Parse a unit with more than one token
+    UnitDefinition check("check","1/20_m^2*kg/s");
+    UnitDefinition inverse = check.invert();
+    UnitDefinition updated = inverse.update();
+
+    TEST_CHECK(updated.error_state==UnitError::NoError);
+
+    TEST_CHECK(updated.value_ip==2);
+    TEST_CHECK(updated.value_den==1);
+    TEST_CHECK(updated.value_exp==1);
+
+    // 's'
+    TEST_CHECK(updated.definition[0].tokStart==3);
+    TEST_CHECK(updated.definition[0].tokEnd==4);
+    TEST_CHECK(updated.definition[0].expNum==1);
+    TEST_CHECK(updated.definition[0].expDen==1);
+    // 'm'
+    TEST_CHECK(updated.definition[1].tokStart==6);
+    TEST_CHECK(updated.definition[1].tokEnd==7);
+    TEST_CHECK(updated.definition[1].expNum==-2);
+    TEST_CHECK(updated.definition[1].expDen==1);
+    // 'kg'
+    TEST_CHECK(updated.definition[2].tokStart==10);
+    TEST_CHECK(updated.definition[2].tokEnd==12);
+    TEST_CHECK(updated.definition[2].expNum==-1);
+    TEST_CHECK(updated.definition[2].expDen==1);
+    // End
+    TEST_CHECK(updated.definition[3].tokStart==0);
+    TEST_CHECK(updated.definition[3].tokEnd==0);
+
+    TEST_CHECK(updated.u_def[0]=='2');
+    TEST_CHECK(updated.u_def[1]=='0');
+    TEST_CHECK(updated.u_def[2]=='_');
+    TEST_CHECK(updated.u_def[3]=='s');
+    TEST_CHECK(updated.u_def[4]=='/');
+    TEST_CHECK(updated.u_def[5]=='(');
+    TEST_CHECK(updated.u_def[6]=='m');
+    TEST_CHECK(updated.u_def[7]=='^');
+    TEST_CHECK(updated.u_def[8]=='2');
+    TEST_CHECK(updated.u_def[9]=='*');
+    TEST_CHECK(updated.u_def[10]=='k');
+    TEST_CHECK(updated.u_def[11]=='g');
+    TEST_CHECK(updated.u_def[12]==')');
+    TEST_CHECK(updated.u_def[13]==0);
+}
+
+
+
 void test_Qty_operators1() {
     // Try to use some quantities, this is all constexpr so verify the compiler
     // generates code that simply stores the number and nothing else
@@ -849,6 +960,275 @@ void test_Qty_operators5() {
     TEST_CHECK(y.unit()[4]==0);
 }
 
+void test_Qty_operators6() {
+    // Comprehensive test of addition
+    Qty<"m"> x = 50.0*_("m");
+    Qty<"m"> addendum_no_conversion(0.1);
+    Qty<"cm"> addendum_conversion(10.0);
+
+    auto y1=x+addendum_no_conversion;
+    TEST_CHECK(y1.value() == 50.1);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=addendum_no_conversion+x;
+    TEST_CHECK(y2.value() == 50.1);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]==0);
+
+    auto y3=addendum_conversion+x;
+    TEST_CHECK(y3.value() == 5010.0);
+    TEST_CHECK(y3.unit()[0]=='c');
+    TEST_CHECK(y3.unit()[1]=='m');
+    TEST_CHECK(y3.unit()[2]==0);
+
+    auto y4=x+addendum_conversion;
+    TEST_CHECK(y4.value() == 50.1);
+    TEST_CHECK(y4.unit()[0]=='m');
+    TEST_CHECK(y4.unit()[1]==0);
+
+}
+
+void test_Qty_operators7() {
+    // Comprehensive test of subtraction
+    Qty<"m"> x = 50.0*_("m");
+    Qty<"m"> addendum_no_conversion(0.1);
+    Qty<"cm"> addendum_conversion(10.0);
+
+    auto y1=x-addendum_no_conversion;
+    TEST_CHECK(y1.value() == 49.9);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=addendum_no_conversion-x;
+    TEST_CHECK(y2.value() == -49.9);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]==0);
+
+    auto y3=addendum_conversion-x;
+    TEST_CHECK(y3.value() == -4990.0);
+    TEST_CHECK(y3.unit()[0]=='c');
+    TEST_CHECK(y3.unit()[1]=='m');
+    TEST_CHECK(y3.unit()[2]==0);
+
+    auto y4=x-addendum_conversion;
+    TEST_CHECK(y4.value() == 49.9);
+    TEST_CHECK(y4.unit()[0]=='m');
+    TEST_CHECK(y4.unit()[1]==0);
+
+}
+
+void test_Qty_operators8() {
+    // Comprehensive test of multiplication by scalar
+    Qty<"m"> x = 50.0*_("m");
+    int multiplicand_int32 = -123;
+    int64_t multiplicand_int64 = -123;
+    double multiplicand_dbl = -123.0;
+
+    auto y1=x*multiplicand_int32;
+    TEST_CHECK(y1.value() == -6150.0);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=multiplicand_int32*x;
+    TEST_CHECK(y2.value() == -6150.0);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]==0);
+
+    auto y3=x*multiplicand_int64;
+    TEST_CHECK(y3.value() == -6150.0);
+    TEST_CHECK(y3.unit()[0]=='m');
+    TEST_CHECK(y3.unit()[1]==0);
+
+    auto y4=multiplicand_int64*x;
+    TEST_CHECK(y4.value() == -6150.0);
+    TEST_CHECK(y4.unit()[0]=='m');
+    TEST_CHECK(y4.unit()[1]==0);
+
+    auto y5=x*multiplicand_dbl;
+    TEST_CHECK(y5.value() == -6150.0);
+    TEST_CHECK(y5.unit()[0]=='m');
+    TEST_CHECK(y5.unit()[1]==0);
+
+    auto y6=multiplicand_dbl*x;
+    TEST_CHECK(y6.value() == -6150.0);
+    TEST_CHECK(y6.unit()[0]=='m');
+    TEST_CHECK(y6.unit()[1]==0);
+}
+
+void test_Qty_operators9() {
+    // Comprehensive test of division by scalar
+    Qty<"m"> x = 50.0*_("m");
+    int div_int32 = -123;
+    int64_t div_int64 = -123;
+    double div_dbl = -123.0;
+
+    auto y1=x/div_int32;
+    TEST_CHECK(y1.value() == -0.40650406504065040650406504065);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=div_int32/x;
+    TEST_CHECK(y2.value() == -2.46);
+    TEST_CHECK(y2.unit()[0]=='1');
+    TEST_CHECK(y2.unit()[1]=='/');
+    TEST_CHECK(y2.unit()[2]=='m');
+    TEST_CHECK(y2.unit()[3]==0);
+
+    auto y3=x/div_int64;
+    TEST_CHECK(y3.value() == -0.40650406504065040650406504065);
+    TEST_CHECK(y3.unit()[0]=='m');
+    TEST_CHECK(y3.unit()[1]==0);
+
+    auto y4=div_int64/x;
+    TEST_CHECK(y4.value() == -2.46);
+    TEST_CHECK(y4.unit()[0]=='1');
+    TEST_CHECK(y4.unit()[1]=='/');
+    TEST_CHECK(y4.unit()[2]=='m');
+    TEST_CHECK(y4.unit()[3]==0);
+
+    auto y5=x/div_dbl;
+    TEST_CHECK(y5.value() == -0.40650406504065040650406504065);
+    TEST_CHECK(y5.unit()[0]=='m');
+    TEST_CHECK(y5.unit()[1]==0);
+
+    auto y6=div_dbl/x;
+    TEST_CHECK(y6.value() == -2.46);
+    TEST_CHECK(y6.unit()[0]=='1');
+    TEST_CHECK(y6.unit()[1]=='/');
+    TEST_CHECK(y6.unit()[2]=='m');
+    TEST_CHECK(y6.unit()[3]==0);
+
+}
+
+void test_Qty_operators10() {
+    // Comprehensive test of multiplication and division of units with multiple tokens
+    auto x = 50.0*_("kg*m/s^2");
+    auto y = 10.0*_("m/s^2");
+
+    auto y1=x/y;
+    TEST_CHECK(y1.value() == 5.0);
+    TEST_CHECK(y1.unit()[0]=='k');
+    TEST_CHECK(y1.unit()[1]=='g');
+    TEST_CHECK(y1.unit()[2]==0);
+
+    auto y2=y*x;
+    TEST_CHECK(y2.value() == 500.0);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]=='^');
+    TEST_CHECK(y2.unit()[2]=='2');
+    TEST_CHECK(y2.unit()[3]=='*');
+    TEST_CHECK(y2.unit()[4]=='k');
+    TEST_CHECK(y2.unit()[5]=='g');
+    TEST_CHECK(y2.unit()[6]=='/');
+    TEST_CHECK(y2.unit()[7]=='s');
+    TEST_CHECK(y2.unit()[8]=='^');
+    TEST_CHECK(y2.unit()[9]=='4');
+    TEST_CHECK(y2.unit()[10]==0);
+
+    auto y3=y/x;
+    TEST_CHECK(y3.value() == 0.2);
+    TEST_CHECK(y3.unit()[0]=='1');
+    TEST_CHECK(y3.unit()[1]=='/');
+    TEST_CHECK(y3.unit()[2]=='k');
+    TEST_CHECK(y3.unit()[3]=='g');
+    TEST_CHECK(y3.unit()[4]==0);
+
+    auto y4=x*y;
+    TEST_CHECK(y4.value() == 500.0);
+    TEST_CHECK(y4.unit()[0]=='k');
+    TEST_CHECK(y4.unit()[1]=='g');
+    TEST_CHECK(y4.unit()[2]=='*');
+    TEST_CHECK(y4.unit()[3]=='m');
+    TEST_CHECK(y4.unit()[4]=='^');
+    TEST_CHECK(y4.unit()[5]=='2');
+    TEST_CHECK(y4.unit()[6]=='/');
+    TEST_CHECK(y4.unit()[7]=='s');
+    TEST_CHECK(y4.unit()[8]=='^');
+    TEST_CHECK(y4.unit()[9]=='4');
+    TEST_CHECK(y4.unit()[10]==0);
+
+}
+
+void test_Qty_operators11() {
+    // Comprehensive test of multiplication and division of units with multiple tokens AND fractional exponents
+    auto x = 50.0*_("kg*m^(1/3)/s^2");
+    auto y = 10.0*_("m/s^1/2");
+
+    auto y1=x/y;
+    TEST_CHECK(y1.value() == 5.0);
+    TEST_CHECK(y1.unit()[0]=='k');
+    TEST_CHECK(y1.unit()[1]=='g');
+    TEST_CHECK(y1.unit()[2]=='/');
+    TEST_CHECK(y1.unit()[3]=='(');
+    TEST_CHECK(y1.unit()[4]=='m');
+    TEST_CHECK(y1.unit()[5]=='^');
+    TEST_CHECK(y1.unit()[6]=='2');
+    TEST_CHECK(y1.unit()[7]=='/');
+    TEST_CHECK(y1.unit()[8]=='3');
+    TEST_CHECK(y1.unit()[9]=='*');
+    TEST_CHECK(y1.unit()[10]=='s');
+    TEST_CHECK(y1.unit()[11]=='^');
+    TEST_CHECK(y1.unit()[12]=='3');
+    TEST_CHECK(y1.unit()[13]=='/');
+    TEST_CHECK(y1.unit()[14]=='2');
+    TEST_CHECK(y1.unit()[15]==')');
+    TEST_CHECK(y1.unit()[16]==0);
+
+    auto y2=y*x;
+    TEST_CHECK(y2.value() == 500.0);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]=='^');
+    TEST_CHECK(y2.unit()[2]=='4');
+    TEST_CHECK(y2.unit()[3]=='/');
+    TEST_CHECK(y2.unit()[4]=='3');
+    TEST_CHECK(y2.unit()[5]=='*');
+    TEST_CHECK(y2.unit()[6]=='k');
+    TEST_CHECK(y2.unit()[7]=='g');
+    TEST_CHECK(y2.unit()[8]=='/');
+    TEST_CHECK(y2.unit()[9]=='s');
+    TEST_CHECK(y2.unit()[10]=='^');
+    TEST_CHECK(y2.unit()[11]=='5');
+    TEST_CHECK(y2.unit()[12]=='/');
+    TEST_CHECK(y2.unit()[13]=='2');
+    TEST_CHECK(y2.unit()[14]==0);
+
+    auto y3=y/x;
+    TEST_CHECK(y3.value() == 0.2);
+    TEST_CHECK(y3.unit()[0]=='m');
+    TEST_CHECK(y3.unit()[1]=='^');
+    TEST_CHECK(y3.unit()[2]=='2');
+    TEST_CHECK(y3.unit()[3]=='/');
+    TEST_CHECK(y3.unit()[4]=='3');
+    TEST_CHECK(y3.unit()[5]=='*');
+    TEST_CHECK(y3.unit()[6]=='s');
+    TEST_CHECK(y3.unit()[7]=='^');
+    TEST_CHECK(y3.unit()[8]=='3');
+    TEST_CHECK(y3.unit()[9]=='/');
+    TEST_CHECK(y3.unit()[10]=='2');
+    TEST_CHECK(y3.unit()[11]=='/');
+    TEST_CHECK(y3.unit()[12]=='k');
+    TEST_CHECK(y3.unit()[13]=='g');
+    TEST_CHECK(y3.unit()[14]==0);
+
+    auto y4=x*y;
+    TEST_CHECK(y4.value() == 500.0);
+    TEST_CHECK(y4.unit()[0]=='k');
+    TEST_CHECK(y4.unit()[1]=='g');
+    TEST_CHECK(y4.unit()[2]=='*');
+    TEST_CHECK(y4.unit()[3]=='m');
+    TEST_CHECK(y4.unit()[4]=='^');
+    TEST_CHECK(y4.unit()[5]=='4');
+    TEST_CHECK(y4.unit()[6]=='/');
+    TEST_CHECK(y4.unit()[7]=='3');
+    TEST_CHECK(y4.unit()[8]=='/');
+    TEST_CHECK(y4.unit()[9]=='s');
+    TEST_CHECK(y4.unit()[10]=='^');
+    TEST_CHECK(y4.unit()[11]=='5');
+    TEST_CHECK(y4.unit()[12]=='/');
+    TEST_CHECK(y4.unit()[13]=='2');
+    TEST_CHECK(y4.unit()[14]==0);
+}
 
 /*
 void other_function() {
@@ -994,11 +1374,19 @@ TEST_LIST = {
     {"UnitDefinition-MultipleTokens9", test_UnitDefinition_parser_multipleTokens9},
     {"UnitDefinition-MultipleTokens10", test_UnitDefinition_parser_multipleTokens10},
     {"UnitDefinition-MultipleTokens11", test_UnitDefinition_parser_multipleTokens11},
+    {"UnitDefinition-Update1", test_UnitDefinition_update1},
+    {"UnitDefinition-Update2", test_UnitDefinition_update2},
 
     {"Qty-Operators1",test_Qty_operators1},
     {"Qty-Operators2",test_Qty_operators2},
     {"Qty-Operators3",test_Qty_operators3},
     {"Qty-Operators4",test_Qty_operators4},
     {"Qty-Operators5",test_Qty_operators5},
+    {"Qty-Operators6",test_Qty_operators6},
+    {"Qty-Operators7",test_Qty_operators7},
+    {"Qty-Operators8",test_Qty_operators8},
+    {"Qty-Operators9",test_Qty_operators9},
+    {"Qty-Operators10",test_Qty_operators10},
+    {"Qty-Operators11",test_Qty_operators11},
     {NULL,NULL}
 };
