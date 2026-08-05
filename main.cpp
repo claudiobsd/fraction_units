@@ -1,4 +1,5 @@
 #include <cmath>
+#include <iostream>
 
 #include "fraction_units.hpp"
 
@@ -10,6 +11,72 @@ auto massFlow(const Qty<"kg/m^3"> density, const Qty<"m^2"> area, const Qty<"m/s
 
 double cosUnit(const Qty<"r"> angle) {
     return std::cos(angle.value());
+}
+
+
+void test_basicmath1()
+{
+    // Testing custom power function because std::pow is not constexpr in MSVC and Clang yet
+    double x = 123.4;
+
+    for(auto i=0;i<100;++i) {
+        double y = intpow(x,i);
+        TEST_CHECK(std::abs(y - std::pow(x,i))<1e-15);
+    }
+}
+
+void test_basicmath2()
+{
+    // Testing custom power function because std::pow is not constexpr in MSVC and Clang yet
+    double x = 123.4;
+
+    for(auto i=1;i<100;++i) {
+        double y = introot(x,i);
+        TEST_CHECK(std::abs(y - std::pow(x,1.0/i))<1e-15);
+        if(std::abs(y - std::pow(x,1.0/i))>1e-15) {
+            std::cout << "Fail!" <<std::endl;
+        }
+    }
+
+    x = 123456789123456789.0;
+
+    for(auto i=1;i<100;++i) {
+        double y = introot(x,i);
+        const double tolerance = std::pow(10,log10(y)-15);
+        TEST_CHECK(std::abs(y - std::pow(x,1.0/i))<tolerance);
+        if(std::abs(y - std::pow(x,1.0/i))>tolerance) {
+            std::cout << "Fail!" <<std::endl;
+        }
+    }
+
+    x = 0.123123123;
+
+    for(auto i=1;i<100;++i) {
+        double y = introot(x,i);
+        const double tolerance = std::pow(10,log10(y)-15);
+        TEST_CHECK(std::abs(y - std::pow(x,1.0/i))<tolerance);
+        if(std::abs(y - std::pow(x,1.0/i))>tolerance) {
+            std::cout << "Fail!" <<std::endl;
+        }
+    }
+}
+
+void test_basicmath3()
+{
+    // Testing custom power function because std::pow is not constexpr in MSVC and Clang yet
+    double x = 123.4;
+
+    double m = dbl_mantissa(x);
+    int exp = dbl_exponent(x);
+
+    TEST_CHECK(exp == 6);
+    TEST_CHECK(m == 1.928125);
+
+    TEST_CHECK(m * (1<<exp) == x);
+
+    auto y = dbl_make(m,exp+2);
+
+    TEST_CHECK(y == x*4);
 }
 
 void test_UnitDefinition_parser()
@@ -860,7 +927,99 @@ void test_UnitDefinition_update2()
     TEST_CHECK(updated.u_def[13]==0);
 }
 
+void test_UnitDefinition_update3()
+{
+    // Update a unit with fractional number
+    UnitDefinition check("check","3/20_m");
+    UnitDefinition inverse = check.invert();
+    UnitDefinition updated = inverse.update();
 
+    TEST_CHECK(updated.error_state==UnitError::NoError);
+
+    TEST_CHECK(updated.value_ip==2);
+    TEST_CHECK(updated.value_den==3);
+    TEST_CHECK(updated.value_exp==1);
+
+    // 'm'
+    TEST_CHECK(updated.definition[0].tokStart==7);
+    TEST_CHECK(updated.definition[0].tokEnd==8);
+    TEST_CHECK(updated.definition[0].expNum==-1);
+    TEST_CHECK(updated.definition[0].expDen==1);
+    // End
+    TEST_CHECK(updated.definition[1].tokStart==0);
+    TEST_CHECK(updated.definition[1].tokEnd==0);
+
+    TEST_CHECK(updated.u_def[0]=='2');
+    TEST_CHECK(updated.u_def[1]=='0');
+    TEST_CHECK(updated.u_def[2]=='/');
+    TEST_CHECK(updated.u_def[3]=='3');
+    TEST_CHECK(updated.u_def[4]=='_');
+    TEST_CHECK(updated.u_def[5]=='1');
+    TEST_CHECK(updated.u_def[6]=='/');
+    TEST_CHECK(updated.u_def[7]=='m');
+    TEST_CHECK(updated.u_def[8]==0);
+}
+
+void test_UnitDefinition_update4()
+{
+    // Update a unit with fractional number
+    UnitDefinition check("check","25/16_m");
+    UnitDefinition square = check.pow(1,2);
+    UnitDefinition updated = square.update();
+
+    TEST_CHECK(updated.error_state==UnitError::NoError);
+
+    TEST_CHECK(updated.value_ip==5);
+    TEST_CHECK(updated.value_den==4);
+    TEST_CHECK(updated.value_exp==0);
+
+    // 'm'
+    TEST_CHECK(updated.definition[0].tokStart==4);
+    TEST_CHECK(updated.definition[0].tokEnd==5);
+    TEST_CHECK(updated.definition[0].expNum==1);
+    TEST_CHECK(updated.definition[0].expDen==2);
+    // End
+    TEST_CHECK(updated.definition[1].tokStart==0);
+    TEST_CHECK(updated.definition[1].tokEnd==0);
+
+    TEST_CHECK(updated.u_def[0]=='5');
+    TEST_CHECK(updated.u_def[1]=='/');
+    TEST_CHECK(updated.u_def[2]=='4');
+    TEST_CHECK(updated.u_def[3]=='_');
+    TEST_CHECK(updated.u_def[4]=='m');
+    TEST_CHECK(updated.u_def[5]=='^');
+    TEST_CHECK(updated.u_def[6]=='1');
+    TEST_CHECK(updated.u_def[7]=='/');
+    TEST_CHECK(updated.u_def[8]=='2');
+    TEST_CHECK(updated.u_def[9]==0);
+}
+void test_UnitDefinition_update5()
+    {
+    // Same but an irrational number
+    UnitDefinition check("check","300/7_m");
+    UnitDefinition square = check.pow(1,2);
+    UnitDefinition updated = square.update();
+
+    TEST_CHECK(updated.error_state==UnitError::NoError);
+
+    TEST_CHECK(updated.value_ip==3900231685776981);
+    TEST_CHECK(updated.value_den==5957702309312746);
+    TEST_CHECK(updated.value_exp==2);
+
+    // 'm'
+    TEST_CHECK(updated.definition[0].tokEnd==updated.definition[0].tokStart+1);
+    TEST_CHECK(updated.definition[0].expNum==1);
+    TEST_CHECK(updated.definition[0].expDen==2);
+    // End
+    TEST_CHECK(updated.definition[1].tokStart==0);
+    TEST_CHECK(updated.definition[1].tokEnd==0);
+
+    const char expected[]="3900231685776981e2/5957702309312746_m^1/2";
+
+    for(auto i=0;expected[i]!=0;++i) {
+        TEST_CHECK(updated.u_def[i]==expected[i]);
+    }
+}
 
 void test_Qty_operators1() {
     // Try to use some quantities, this is all constexpr so verify the compiler
@@ -1230,12 +1389,132 @@ void test_Qty_operators11() {
     TEST_CHECK(y4.unit()[14]==0);
 }
 
+void test_Qty_operators12() {
+    // Comprehensive test of pow operation on unit
+    auto x = 50.0*_("kg*m^(1/3)/s^2");
+
+    // Exponents as templates as they are known at compile time
+    auto y1=pow<2>(x);
+    TEST_CHECK(y1.value() == 2500.0);
+    TEST_CHECK(y1.unit()[0]=='k');
+    TEST_CHECK(y1.unit()[1]=='g');
+    TEST_CHECK(y1.unit()[2]=='^');
+    TEST_CHECK(y1.unit()[3]=='2');
+    TEST_CHECK(y1.unit()[4]=='*');
+    TEST_CHECK(y1.unit()[5]=='m');
+    TEST_CHECK(y1.unit()[6]=='^');
+    TEST_CHECK(y1.unit()[7]=='2');
+    TEST_CHECK(y1.unit()[8]=='/');
+    TEST_CHECK(y1.unit()[9]=='3');
+    TEST_CHECK(y1.unit()[10]=='/');
+    TEST_CHECK(y1.unit()[11]=='s');
+    TEST_CHECK(y1.unit()[12]=='^');
+    TEST_CHECK(y1.unit()[13]=='4');
+    TEST_CHECK(y1.unit()[14]==0);
+
+    auto y2=pow<-2>(x);
+    TEST_CHECK(y2.value() == 1.0/2500.0);
+    TEST_CHECK(y2.unit()[0]=='s');
+    TEST_CHECK(y2.unit()[1]=='^');
+    TEST_CHECK(y2.unit()[2]=='4');
+    TEST_CHECK(y2.unit()[3]=='/');
+    TEST_CHECK(y2.unit()[4]=='(');
+    TEST_CHECK(y2.unit()[5]=='k');
+    TEST_CHECK(y2.unit()[6]=='g');
+    TEST_CHECK(y2.unit()[7]=='^');
+    TEST_CHECK(y2.unit()[8]=='2');
+    TEST_CHECK(y2.unit()[9]=='*');
+    TEST_CHECK(y2.unit()[10]=='m');
+    TEST_CHECK(y2.unit()[11]=='^');
+    TEST_CHECK(y2.unit()[12]=='2');
+    TEST_CHECK(y2.unit()[13]=='/');
+    TEST_CHECK(y2.unit()[14]=='3');
+    TEST_CHECK(y2.unit()[15]==')');
+    TEST_CHECK(y2.unit()[16]==0);
+
+
+    auto y3=pow<1,2>(x);
+    TEST_CHECK(y3.value() == std::sqrt(50.0));
+    TEST_CHECK(y3.unit()[0]=='k');
+    TEST_CHECK(y3.unit()[1]=='g');
+    TEST_CHECK(y3.unit()[2]=='^');
+    TEST_CHECK(y3.unit()[3]=='1');
+    TEST_CHECK(y3.unit()[4]=='/');
+    TEST_CHECK(y3.unit()[5]=='2');
+    TEST_CHECK(y3.unit()[6]=='*');
+    TEST_CHECK(y3.unit()[7]=='m');
+    TEST_CHECK(y3.unit()[8]=='^');
+    TEST_CHECK(y3.unit()[9]=='1');
+    TEST_CHECK(y3.unit()[10]=='/');
+    TEST_CHECK(y3.unit()[11]=='6');
+    TEST_CHECK(y3.unit()[12]=='/');
+    TEST_CHECK(y3.unit()[13]=='s');
+    TEST_CHECK(y3.unit()[14]==0);
+
+    auto y4=sqrt(x);
+    TEST_CHECK(y4.value() == std::sqrt(50.0));
+    TEST_CHECK(y4.unit()[0]=='k');
+    TEST_CHECK(y4.unit()[1]=='g');
+    TEST_CHECK(y4.unit()[2]=='^');
+    TEST_CHECK(y4.unit()[3]=='1');
+    TEST_CHECK(y4.unit()[4]=='/');
+    TEST_CHECK(y4.unit()[5]=='2');
+    TEST_CHECK(y4.unit()[6]=='*');
+    TEST_CHECK(y4.unit()[7]=='m');
+    TEST_CHECK(y4.unit()[8]=='^');
+    TEST_CHECK(y4.unit()[9]=='1');
+    TEST_CHECK(y4.unit()[10]=='/');
+    TEST_CHECK(y4.unit()[11]=='6');
+    TEST_CHECK(y4.unit()[12]=='/');
+    TEST_CHECK(y4.unit()[13]=='s');
+    TEST_CHECK(y4.unit()[14]==0);
+
+}
+
+void test_Qty_operators13() {
+    // Comprehensive test of pow operation on units with numeric part (conversions) and exponents
+    auto x = 16*_("3/4_apples");
+
+    auto y1=pow<2>(x);
+    TEST_CHECK(y1.value() == 256.0);
+    TEST_CHECK(y1.unit()[0]=='9');
+    TEST_CHECK(y1.unit()[1]=='/');
+    TEST_CHECK(y1.unit()[2]=='1');
+    TEST_CHECK(y1.unit()[3]=='6');
+    TEST_CHECK(y1.unit()[4]=='_');
+    TEST_CHECK(y1.unit()[5]=='a');
+    TEST_CHECK(y1.unit()[6]=='p');
+    TEST_CHECK(y1.unit()[7]=='p');
+    TEST_CHECK(y1.unit()[8]=='l');
+    TEST_CHECK(y1.unit()[9]=='e');
+    TEST_CHECK(y1.unit()[10]=='s');
+    TEST_CHECK(y1.unit()[11]=='^');
+    TEST_CHECK(y1.unit()[12]=='2');
+    TEST_CHECK(y1.unit()[13]==0);
+
+    // Push the digits to the limit
+    Qty<"3_psi"> z = 1.234*_("3_kPa");
+
+    auto y2=pow<1,2>(z);
+    TEST_CHECK(std::abs(y2.value() - 0.42305622363827502437298)<1e-15);
+
+    const char expected[]="3900231685776981/2251799813685248_psi^1/2";
+    auto unit = y2.unit();
+    for(auto i=0;expected[i]!=0;++i) {
+        TEST_CHECK(unit[i]==expected[i]);
+    }
+
+}
+
+
+
+
 /*
 void other_function() {
     Qty<"m"> x = 50.0*_("m");
 
     auto y=x+(10.0*_("cm"));
-    // Try to create a variable (not constexpr)
+    // Try to create a variable (not constexpr)b
     auto density_whatever = 4.5*_("kg/ft^3");
 
     // Assign it to a variable with a different unit, the compiler
@@ -1321,6 +1600,10 @@ void other_function() {
 }
 */
 TEST_LIST = {
+    {"BasicMath-Pow",test_basicmath1},
+    {"BasicMath-nRoot",test_basicmath2},
+    {"BasicMath-Conversion",test_basicmath3},
+
     {"UnitDefinition-CanParse",test_UnitDefinition_parser},
     {"UnitDefinition-ParseNumber", test_UnitDefinition_parser_number},
     {"UnitDefinition-ParseNumber2", test_UnitDefinition_parser_number2},
@@ -1376,6 +1659,9 @@ TEST_LIST = {
     {"UnitDefinition-MultipleTokens11", test_UnitDefinition_parser_multipleTokens11},
     {"UnitDefinition-Update1", test_UnitDefinition_update1},
     {"UnitDefinition-Update2", test_UnitDefinition_update2},
+    {"UnitDefinition-Update3", test_UnitDefinition_update3},
+    {"UnitDefinition-Update4", test_UnitDefinition_update4},
+    {"UnitDefinition-Update5", test_UnitDefinition_update5},
 
     {"Qty-Operators1",test_Qty_operators1},
     {"Qty-Operators2",test_Qty_operators2},
@@ -1388,5 +1674,7 @@ TEST_LIST = {
     {"Qty-Operators9",test_Qty_operators9},
     {"Qty-Operators10",test_Qty_operators10},
     {"Qty-Operators11",test_Qty_operators11},
+    {"Qty-Operators12",test_Qty_operators12},
+    {"Qty-Operators13",test_Qty_operators13},
     {NULL,NULL}
 };

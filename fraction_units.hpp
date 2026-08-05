@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
+#include <bit>
 
 // Define this as-needed to enable the run time component class
 //define RUNTIME_COMPONENT 1
@@ -48,7 +48,7 @@ static _CONSTEXPR_ const char *UnitErrorMessages[] = {
 
 // Configuration constants
 constexpr size_t maxTokens = 20;
-constexpr size_t maxTokenLength = 16;
+constexpr size_t maxTokenLength = 10;
 constexpr size_t maxDefinitionLength = maxTokens * maxTokenLength / 2;
 
 // String literals as templates for complex units
@@ -67,18 +67,81 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t gcd(int64_t a, int64_t b) {
     return a;
 }
 
-_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t intpow(int64_t number,
+// Some compilers are behind on making std::pow constexpr, so here's our own implementation
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double intpow(double number,
                                                     int64_t exp) {
-    int64_t result = number;
-    --exp;
-    while (exp) {
-        if (exp & 1)
-            result *= number;
-        else
-            number *= number;
+    long double result = 1;
+    long double ldnumber = number;
+    if(exp==0) return 1.0;
+    if(exp<0) {
+        ldnumber = 1.0/ldnumber;
+        exp = -exp;
+    }
+    while (exp>1) {
+        if (exp & 1) {
+            result *= ldnumber;
+        }
+        ldnumber *= ldnumber;
         exp >>= 1;
     }
-    return result;
+    return result*ldnumber;
+}
+
+// For the same reason, we need fractional exponents
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double introot(double number,
+                                                    int64_t nth) {
+    // Make sure that the root is a positive integer AND that number is also positive
+    // This is true for unit coefficients, so we won't check for that here for speed reasons
+
+    int64_t bitmask=1;
+    int64_t log2=0;
+
+    while(number>bitmask && log2<64) {
+        bitmask<<=1;
+        log2++;
+    }
+
+    // Initial guess for Newton-Raphson
+    double xnext = 1LL+ (1LL<<(1+(log2/nth)));
+    double xprev = number;
+    double xrepeat= number;
+    int iterations = 0;
+    do {
+        xrepeat = xprev;
+        xprev = xnext;
+        xnext = ((nth-1)*xprev+number/intpow(xprev,nth-1))/nth;
+        ++iterations;
+    } while(xprev!=xnext && xnext!=xrepeat && iterations<200);
+
+    if(iterations == 200 ) {
+        // 100 iterations is plenty for the 100th root of any integer up to 2^63
+        // For roots more than 100 this will limit the quality of the result (but another method should be used!)
+        throw "introot exceeded number of iterations";
+    }
+    return xnext;
+}
+
+// Apparently, also std::frexp and std::ldexp are not constexpr yet on C++20, so here's our own implementation as well
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double dbl_mantissa(double value) {
+    uint64_t bitconversion = std::bit_cast<uint64_t,double>(value);
+    bitconversion &= ~0x7ff0'0000'0000'0000ULL;    // Clear the exponent
+    bitconversion |=  0x3ff0'0000'0000'0000ULL;    // Set the exponent to 1023 --> 1023 - bias == 0
+    return std::bit_cast<double,uint64_t>(bitconversion);
+}
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int dbl_exponent(double value) {
+    uint64_t bitconversion = std::bit_cast<uint64_t,double>(value);
+    bitconversion &= 0x7ff0'0000'0000'0000ULL;    // Isolate the exponent bits
+    bitconversion >>= 52;
+    return static_cast<int>(bitconversion-1023);
+}
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double dbl_make(double mantissa, int exponent) {
+    uint64_t bitconversion = std::bit_cast<uint64_t,double>(mantissa);
+
+    bitconversion &= ~0x7ff0'0000'0000'0000ULL;    // Clear the exponent bits
+    exponent+=1023;
+    exponent&=0x7ff;
+    bitconversion |= ((uint64_t)exponent)<<52;
+    return std::bit_cast<double,uint64_t>(bitconversion);
 }
 
 _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ size_t outputDigitsNoExponent(int64_t number, char *output, size_t buffersize) {
@@ -106,7 +169,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ size_t outputDigitsNoExponent(int64_t numbe
         powerOf10/=10;
     }
 
-    while(number) {
+    while(number || powerOf10>0) {
         char digit='0';
         while(number>=powerOf10) {
             ++digit;
@@ -117,6 +180,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ size_t outputDigitsNoExponent(int64_t numbe
             // Cause a compile error
             throw "Internal text buffer overflow - increase internal buffers";
         }
+        powerOf10/=10;
     }
     return idx;
 }
@@ -169,7 +233,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double powerOf10Exponent(const int64_t exp1
             return (double)ipowerOf10;
         }
     } else {
-        return std::pow(10.0, exp10);
+        return intpow(10.0, exp10);
     }
 }
 
@@ -1123,6 +1187,10 @@ struct UnitDefinition {
     _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ UnitDefinition
     pow(int64_t expNum, int64_t expDen) const {
         UnitDefinition result = *this;
+        if(expDen<0) {
+            expNum=-expNum;
+            expDen=-expDen;
+        }
         if (expDen == 1) {
             // TODO: Watch for integer overflow here! Even though unit exponents tend
             // to be small numbers, the integer constant can be a big number
@@ -1136,24 +1204,57 @@ struct UnitDefinition {
                 result.value_den = intpow(value_den, expNum);
             }
         } else {
-            // Fractional powers, use floationg point then come back to integers
-            // TODO: Either do this in doubles or use a decimal number library
-            long double numerator = std::pow((long double)result.value_ip,(long double) expNum / (long double)expDen);
-            long double denominator = std::pow((long double)result.value_den,(long double) expNum / (long double)expDen);
+            if (result.value_ip != 1 || result.value_den != 1 ||
+                result.value_exp != 0) {
+                // Fractional powers, use floationg point then come back to integers
+                // GCC has std::pow constexpr as a non-standard extension, but clang
+                // will refuse this because pow is NOT constexpr
+                bool invertFraction = expNum<0;
+                double numerator = intpow(introot((double)result.value_ip,expDen),intabs(expNum));
+                double denominator = intpow(introot((double)result.value_den,expDen),intabs(expNum));
 
-            // Now try to extract a fraction
-            integer128 num128 = numerator * (long double)4294967296 * (long double)4294967296;  // Multiply by 2^64 to make it an integer, this will only change the IEEE exponent
-            integer128 den128 = denominator * (long double)4294967296 * (long double)4294967296;  // Multiply by 2^64 to make it an integer, this will only change the IEEE exponent
+                // Now try to extract a fraction
+                int num_exponent2 = dbl_exponent(numerator);
+                double num_mant = dbl_mantissa(numerator);
+                double int_num = dbl_make(num_mant, 54);
+                int den_exponent2 = dbl_exponent(denominator);
+                double den_mant = dbl_mantissa(denominator);
+                double int_den = dbl_make(den_mant, 54);
 
-            auto fraction = simplifyfraction128(num128, den128);
+                integer128 num128{static_cast<int64_t>(
+                    int_num)}; // Multiply by 2^64 to make it an integer, this will
+                // only change the IEEE exponent
+                integer128 den128{static_cast<int64_t>(int_den)};
 
-            result.value_ip = fraction.first;
-            result.value_den = fraction.second;
+                num_exponent2 -= den_exponent2;
+
+                if (num_exponent2 > 64 || num_exponent2 < -64) {
+                    throw "Precision loss in pow operation, cannot proceed";
+                }
+                if (num_exponent2 < 0) {
+                    den128 = den128 << (-num_exponent2);
+                }
+                if (num_exponent2 > 0) {
+                    num128 = num128 << num_exponent2;
+                }
+
+                auto fraction = simplifyfraction128(num128, den128);
+
+                if(invertFraction) {
+                    result.value_den=fraction.first;
+                    result.value_ip=fraction.second;
+                }
+                else {
+                result.value_ip = fraction.first;
+                result.value_den = fraction.second;
+                }
+            }
         }
 
         for (size_t i = 0; i < maxTokens; ++i) {
-            result.definition[i].expNum *= expNum;
-            result.definition[i].expDen *= expDen;
+            auto fractionexponent = simplifyfraction(result.definition[i].expNum * expNum, result.definition[i].expDen * expDen);
+            result.definition[i].expNum = fractionexponent.first;
+            result.definition[i].expDen = fractionexponent.second;
             if (definition[i].tokStart == definition[i].tokEnd)
                 break;
         }
@@ -1206,7 +1307,7 @@ struct UnitDefinition {
             txtj += outputDigits(value_ip,(value_exp>0)? value_exp: 0, result.u_def+txtj, maxDefinitionLength-txtj);
             if(needDen) {
                 result.u_def[txtj++]='/';
-                txtj += outputDigits(value_ip,(value_exp<0)? -value_exp: 0, result.u_def+txtj, maxDefinitionLength-txtj);
+                txtj += outputDigits(value_den,((value_exp<0)? -value_exp: 0), result.u_def+txtj, maxDefinitionLength-txtj);
             }
         }
 
@@ -1695,6 +1796,10 @@ public:
                                                const Qty<V> rhs);
     // Operator *= or /= with another unit does not exist, a variable cannot
     // change units once declared. For that use case, use the RQty class.
+    template <int64_t EXP, UTxt V>
+    friend _CONSTEXPR_ inline auto pow(const Qty<V> lhs);
+    template <int64_t NUM, int64_t DEN, UTxt V>
+    friend _CONSTEXPR_ inline auto pow(const Qty<V> lhs);
 
 #ifdef RUNTIME_COMPONENT
 
@@ -1727,7 +1832,7 @@ private:
     // The actual unitDef for the physical quantity is a static _CONSTEXPR_ member
     // of the class therefore the compiler will not create/store any data unless
     // it is used during run time
-    static constexpr UnitDefinition unitDef = {U};
+    static constexpr const UnitDefinition unitDef = {U};
 };
 
 
@@ -1958,8 +2063,32 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
 }
 
 
+constexpr int64_t toConstExpr(const int64_t num) { return num; }
 
+template <int64_t EXP, UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
+    constexpr auto finalUnit =
+        Qty<V>::unitDef.pow(EXP,1).update();
+    constexpr auto finalUnitDefinition =
+        to_UTxt<finalUnit.u_defLen>(finalUnit);
+    // This it the only operation the compiler will do at run time if needed
+    return Qty<finalUnitDefinition>{intpow(lhs.value(),EXP)};
+}
 
+template <int64_t NUM, int64_t DEN, UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
+    constexpr auto finalUnit =
+        Qty<V>::unitDef.pow(NUM,DEN).update();
+    constexpr auto finalUnitDefinition =
+        to_UTxt<finalUnit.u_defLen>(finalUnit);
+    // This it the only operation the compiler will do at run time if needed
+    return Qty<finalUnitDefinition>{intpow(introot(lhs.value(),(double)DEN),(double)NUM)};
+}
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto sqrt(const Qty<V> lhs) {
+    return pow<1,2>(lhs);
+}
 // ********************************************************************************************************************
 // ********************************************************************************************************************
 // ********************************************************************************************************************

@@ -1,5 +1,5 @@
 TEMPLATE = app
-CONFIG += console c++20
+CONFIG += console
 CONFIG -= app_bundle
 CONFIG -= qt
 
@@ -11,8 +11,8 @@ HEADERS += \
         fraction_units.hpp
 
 CONFIG(debug, debug|release) {
-QMAKE_CXXFLAGS += -g -O0 -Wpedantic
+QMAKE_CXXFLAGS += -g -O0 -Wpedantic -std=gnu++20
 }
 CONFIG(release, debug|release) {
-QMAKE_CXXFLAGS += -g -O3 -DNDEBUG -Wpedantic
+QMAKE_CXXFLAGS += -g -O3 -DNDEBUG -Wpedantic -std=gnu++20
 }
