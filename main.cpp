@@ -1506,6 +1506,34 @@ void test_Qty_operators13() {
 
 }
 
+void test_Qty_operators14() {
+    // Test automatic conversion of non-dimensional values
+    auto x = 10*_("psf");
+
+    auto y = 5*_("Pa");
+
+    // Z is a non-dimensional quantity
+    auto z = x/y;
+
+    // Auto conversion from unit to double
+    double zeta = z;
+
+    TEST_CHECK(zeta == 95.7605179606716852322);
+
+    // Explicitly converting to non-dinemsional simplified unit
+    Qty<""> nonD = zeta;
+    // Test implicit simplification from psf/Pa to non-dimensional  during equality operator
+    TEST_CHECK(nonD == z);
+
+    // Set as a double even though this unit is NOT non-dimensional yet
+    z = Qty<"">{5.0};
+
+    Qty<""> nonD2 = 5.0;
+
+    // This is NOT the same, since z has unit of "psf/Pa"
+    TEST_CHECK(nonD2 == z);
+}
+
 
 
 
@@ -1676,5 +1704,6 @@ TEST_LIST = {
     {"Qty-Operators11",test_Qty_operators11},
     {"Qty-Operators12",test_Qty_operators12},
     {"Qty-Operators13",test_Qty_operators13},
+    {"Qty-Operators14",test_Qty_operators14},
     {NULL,NULL}
 };

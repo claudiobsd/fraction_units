@@ -498,7 +498,13 @@ simplifyfraction128(integer128 a_num, integer128 a_den) {
     }
     if ((a_num.hiword != 0ULL && a_num.hiword != ~0ULL) ||
         (a_den.hiword != 0ULL && a_den.hiword != ~0ULL)) {
-        throw "Precision loss";
+        // Lose some precision here...
+        while(a_num.hiword || a_den.hiword) {
+            a_num = a_num >> 1;
+            a_den = a_den >> 1;
+        }
+
+        //throw "Precision loss";
     }
     return {a_num.loword, a_den.loword};
 }
@@ -1174,8 +1180,11 @@ struct UnitDefinition {
 
         // Multiply the values of the two
         // Watch out for integer overflow in these multiplications
-        result.value_ip *= other.value_ip;
-        result.value_den *= other.value_den;
+        integer128 value_ip128 = integer128::mul64x64(result.value_ip,other.value_ip);
+        integer128 value_den128 = integer128::mul64x64(result.value_den, other.value_den);
+        auto fraction128 = simplifyfraction128(value_ip128,value_den128);
+        result.value_ip=fraction128.first;
+        result.value_den=fraction128.second;
         result.value_exp += other.value_exp;
 
         // definition string needs to be regenerated
@@ -1467,6 +1476,13 @@ struct UnitDefinition {
         return result;
     }
 
+    _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ bool isTrueNonDimensional() const {
+        return (definition[0].tokStart==definition[0].tokEnd) && value_ip == 1 && value_den == 1 && value_exp == 0;
+    }
+    _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ bool isNonDimensional() const {
+        const UnitDefinition simplified = simplify();
+        return simplified.definition[0].tokStart==simplified.definition[0].tokEnd;
+    }
     // Name of the unit in question (abbreviated form used in formulae, not a
     // formal name, like "Pa" for Pascals) Can be an empty string, an unnamed unit
     char u_name[maxTokenLength] = {};
@@ -1710,7 +1726,9 @@ public:
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(int64_t _value)
         : number((double)_value) {}
     // Constructor with a floating point number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(double _value) : number(_value) {}
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==false) : number(_value) {}
+    // Implicit conversion from double type ONLY allowed when the unit is non-dimensional
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==true) : number(_value / conversionFactorTo(Qty<"">{})) {}
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
@@ -1731,6 +1749,10 @@ public:
         return Qty<V>{number * convFactor};
     }
 
+    _OPTIMIZE_ _CONSTEXPR_ inline operator double() const requires (UnitDefinition{U}.isNonDimensional() == true) {
+        const auto convFactor = conversionFactorTo(Qty<"">{});
+        return number * convFactor;
+    }
     // Addition operator for 2 units
     // Convention: Resulting unit of an addition or subtraction is always the unit
     // of the left argument This is done to guarantee that adding with +=
@@ -1887,10 +1909,10 @@ conversionFactor(const UnitDefinition from, const UnitDefinition to) {
 
 // Calculate a multiplicative conversion factor to convert from
 // the current unit to the unit of the given argument
-template <UTxt U, UTxt V>
+template <UTxt W, UTxt V>
 _OPTIMIZE_ consteval inline double
-conversionFactor(const Qty<U> /*from*/, const Qty<V> /*to*/) {
-    return conversionFactor(Qty<U>::unitDef,Qty<V>::unitDef);
+conversionFactor(const Qty<W> /*from*/, const Qty<V> /*to*/) {
+    return conversionFactor(Qty<W>::unitDef,Qty<V>::unitDef);
 }
 
 // Addition operator for 2 units
@@ -1905,12 +1927,12 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
     return Qty<W>{finalvalue};
 }
 
-template <UTxt U, UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-(const Qty<U> lhs,
+template <UTxt W, UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
                                                const Qty<V> rhs) {
-    const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<U>::unitDef);
+    const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
     double finalvalue = lhs.value() - rhs.value() * convFactor;
-    return Qty<U>{finalvalue};
+    return Qty<W>{finalvalue};
 }
 
 // Multiplication operator for 2 units
@@ -1919,13 +1941,13 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-(const Qty<U> lhs,
 // except identical tokens will merge their exponents
 // For example: m*m^2 == m^3 but m*cm == m*cm (the SI prefixed unit is
 // treated as a different unit)
-template <UTxt U, UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<U> lhs,
+template <UTxt W, UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<W> lhs,
                                              const Qty<V> rhs) {
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     constexpr const auto finalUnit =
-        Qty<U>::unitDef.multiply(Qty<V>::unitDef).update();
+        Qty<W>::unitDef.multiply(Qty<V>::unitDef).update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
@@ -2089,6 +2111,42 @@ template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto sqrt(const Qty<V> lhs) {
     return pow<1,2>(lhs);
 }
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<W> rhs) {
+    const auto residual = lhs-rhs;
+    return std::abs(residual.value())<1e-15;
+}
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator !=(const Qty<V> lhs, const Qty<W> rhs) {
+    const auto residual = lhs-rhs;
+    return std::abs(residual.value())>=1e-15;
+}
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator <(const Qty<V> lhs, const Qty<W> rhs) {
+    const auto residual = lhs-rhs;
+    return residual.value<0.0;
+}
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator <=(const Qty<V> lhs, const Qty<W> rhs) {
+    const auto residual = lhs-rhs;
+    return residual.value<=0.0;
+}
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator >(const Qty<V> lhs, const Qty<W> rhs) {
+    const auto residual = lhs-rhs;
+    return residual.value>0.0;
+}
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator >=(const Qty<V> lhs, const Qty<W> rhs) {
+    const auto residual = lhs-rhs;
+    return residual.value>=0.0;
+}
+
 // ********************************************************************************************************************
 // ********************************************************************************************************************
 // ********************************************************************************************************************
