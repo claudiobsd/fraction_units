@@ -68,7 +68,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ int64_t gcd(int64_t a, int64_t b) {
 }
 
 // Some compilers are behind on making std::pow constexpr, so here's our own implementation
-_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double intpow(double number,
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double intpow(long double number,
                                                     int64_t exp) {
     long double result = 1;
     long double ldnumber = number;
@@ -84,7 +84,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double intpow(double number,
         ldnumber *= ldnumber;
         exp >>= 1;
     }
-    return result*ldnumber;
+    return (double)(result*ldnumber);
 }
 
 // For the same reason, we need fractional exponents
@@ -96,20 +96,20 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double introot(double number,
     int64_t bitmask=1;
     int64_t log2=0;
 
-    while(number>bitmask && log2<64) {
+    while(number>(double)bitmask && log2<64) {
         bitmask<<=1;
         log2++;
     }
 
     // Initial guess for Newton-Raphson
-    double xnext = 1LL+ (1LL<<(1+(log2/nth)));
+    double xnext = (double)(1LL+ (1LL<<(1+(log2/nth))));
     double xprev = number;
     double xrepeat= number;
     int iterations = 0;
     do {
         xrepeat = xprev;
         xprev = xnext;
-        xnext = ((nth-1)*xprev+number/intpow(xprev,nth-1))/nth;
+        xnext = (((double)nth-1)*xprev+number/intpow(xprev,nth-1))/(double)nth;
         ++iterations;
     } while(xprev!=xnext && xnext!=xrepeat && iterations<200);
 
@@ -228,7 +228,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double powerOf10Exponent(const int64_t exp1
             ipowerOf10 *= 10;
         }
         if (exp10 < 0) {
-            return 1.0 / ipowerOf10;
+            return 1.0 / (double)ipowerOf10;
         } else {
             return (double)ipowerOf10;
         }
@@ -408,8 +408,8 @@ struct integer128 {
         if (iszero128(b) || iszero128(a)) {
             return a;
         }
-        int isnegA = a.hiword >> 63;
-        int isnegB = b.hiword >> 63;
+        int isnegA = (int)(a.hiword >> 63);
+        int isnegB = (int)(b.hiword >> 63);
         if (isnegA) {
             a = neg128(a);
         }
@@ -1018,25 +1018,25 @@ struct UnitDefinition {
             error_index = i;
         }
 
-        for (auto i = 0; i < nTokens; ++i) {
-            if (allTokens[i].tokStart == allTokens[i].tokEnd) {
+        for (auto k = 0; k < nTokens; ++k) {
+            if (allTokens[k].tokStart == allTokens[k].tokEnd) {
                 error_state = UnitError::InvalidDefinition;
-                error_index = allTokens[i].tokStart;
+                error_index = allTokens[k].tokStart;
                 break;
             } else {
-                for (auto j = allTokens[i].tokStart; j < allTokens[i].tokEnd; ++j) {
+                for (auto j = allTokens[k].tokStart; j < allTokens[k].tokEnd; ++j) {
                     // No numbers in a token, otherwise it's fair game to use Unicode
                     // chars (Angstrom, Micron, etc.)
                     if (u_def[j] >= '0' && u_def[j] <= '9') {
                         error_state = UnitError::InvalidDefinition;
-                        error_index = allTokens[i].tokStart + j;
+                        error_index = allTokens[k].tokStart + j;
                         break;
                     }
                 }
             }
-            if (allTokens[i].expDen == 0) {
+            if (allTokens[k].expDen == 0) {
                 error_state = UnitError::InvalidDefinition;
-                error_index = allTokens[i].tokEnd;
+                error_index = allTokens[k].tokEnd;
                 break;
             }
         }
@@ -1204,13 +1204,13 @@ struct UnitDefinition {
             // TODO: Watch for integer overflow here! Even though unit exponents tend
             // to be small numbers, the integer constant can be a big number
             if (expNum < 0) {
-                result.value_den = intpow(value_ip, -expNum);
+                result.value_den = (int64_t)intpow((long double)value_ip, -expNum);
                 result.value_exp = expNum * value_exp;
-                result.value_ip = intpow(value_den, -expNum);
+                result.value_ip = (int64_t)intpow((long double)value_den, -expNum);
             } else {
-                result.value_ip = intpow(value_ip, expNum);
+                result.value_ip = (int64_t)intpow((long double)value_ip, expNum);
                 result.value_exp *= expNum;
-                result.value_den = intpow(value_den, expNum);
+                result.value_den = (int64_t)intpow((long double)value_den, expNum);
             }
         } else {
             if (result.value_ip != 1 || result.value_den != 1 ||
@@ -1725,10 +1725,12 @@ public:
     // Constructor with an integer number
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(int64_t _value)
         : number((double)_value) {}
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(int _value) requires(sizeof(int)!=sizeof(int64_t))
+        : number((double)_value) {}
     // Constructor with a floating point number
     _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==false) : number(_value) {}
     // Implicit conversion from double type ONLY allowed when the unit is non-dimensional
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==true) : number(_value / conversionFactorTo(Qty<"">{})) {}
+    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==true) : number(_value / Qty<U>::conversionFactorTo(Qty<"">{})) {}
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
@@ -1782,6 +1784,11 @@ public:
 
     _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator/=(double rhs) {
         number *= rhs;
+        return *this;
+    }
+
+    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-() {
+        number = -number;
         return *this;
     }
 
@@ -1897,8 +1904,8 @@ conversionFactor(const UnitDefinition from, const UnitDefinition to) {
         // Units were compatible, so extract the value
         convFactor = (combinedUnit.value_den != 1)
                          ? ((double)combinedUnit.value_ip) /
-                               combinedUnit.value_den
-                         : combinedUnit.value_ip;
+                  (double)combinedUnit.value_den
+                         : (double)combinedUnit.value_ip;
         // Apply the exponent
         powerOf10 = powerOf10Exponent(combinedUnit.value_exp);
     }
@@ -2104,7 +2111,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
     constexpr auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    return Qty<finalUnitDefinition>{intpow(introot(lhs.value(),(double)DEN),(double)NUM)};
+    return Qty<finalUnitDefinition>{intpow(introot(lhs.value(),DEN),NUM)};
 }
 
 template <UTxt V>
@@ -2127,24 +2134,55 @@ _OPTIMIZE_ _CONSTEXPR_ inline bool operator !=(const Qty<V> lhs, const Qty<W> rh
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator <(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
-    return residual.value<0.0;
+    return residual.value()<0.0;
 }
 
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator <=(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
-    return residual.value<=0.0;
+    return residual.value()<=0.0;
 }
 
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator >(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
-    return residual.value>0.0;
+    return residual.value()>0.0;
 }
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator >=(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
-    return residual.value>=0.0;
+    return residual.value()>=0.0;
+}
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> min(const Qty<V> lhs, const Qty<W> rhs) {
+    if(lhs<rhs) {
+        return lhs;
+    } else {
+        return rhs;
+    }
+}
+template <UTxt V, UTxt W, UTxt X>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> min(const Qty<V> lhs, const Qty<W> rhs, const Qty<X> uhs) {
+    return min(lhs,min(rhs,uhs));
+}
+
+template <UTxt V, UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> max(const Qty<V> lhs, const Qty<W> rhs) {
+    if(lhs>rhs) {
+        return lhs;
+    } else {
+        return rhs;
+    }
+}
+template <UTxt V, UTxt W, UTxt X>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> max(const Qty<V> lhs, const Qty<W> rhs, const Qty<X> uhs) {
+    return max(lhs,max(rhs,uhs));
+}
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> abs(const Qty<V> lhs) {
+    return lhs.value()<0.0? -lhs : lhs;
 }
 
 // ********************************************************************************************************************
