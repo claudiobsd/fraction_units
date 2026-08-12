@@ -1788,8 +1788,7 @@ public:
     }
 
     _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-() {
-        number = -number;
-        return *this;
+        return Qty<U>{-number};
     }
 
     _OPTIMIZE_ _CONSTEXPR_ inline double value() const { return number; }

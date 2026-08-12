@@ -63,7 +63,6 @@ void test_basicmath2()
 
 void test_basicmath3()
 {
-    // Testing custom power function because std::pow is not constexpr in MSVC and Clang yet
     double x = 123.4;
 
     double m = dbl_mantissa(x);
@@ -1535,7 +1534,47 @@ void test_Qty_operators14() {
 }
 
 
+void test_Qty_operators15() {
+    // Test comparison operators
+    auto w = 10*_("psi");
 
+    auto x = 14*_("psi");
+
+    auto y = 50*_("kPa");
+
+    auto z = (-10)*_("psi");
+
+    TEST_CHECK(w < x);
+    TEST_CHECK(w > y);
+    TEST_CHECK(w > z);
+
+    TEST_CHECK(x > w);
+    TEST_CHECK(x > y);
+    TEST_CHECK(x > z);
+
+    TEST_CHECK(y < w);
+    TEST_CHECK(y < x);
+    TEST_CHECK(y > z);
+
+    TEST_CHECK(z < w);
+    TEST_CHECK(z < x);
+    TEST_CHECK(z < y);
+
+    TEST_CHECK(w < 2*y);
+    TEST_CHECK(w > x/2);
+    TEST_CHECK(w == -z);
+    TEST_CHECK(w == 68.9475729316836133672*_("kPa"));
+    TEST_CHECK(w <= 68.9475729316836133672*_("kPa"));
+    TEST_CHECK(w >= 68.9475729316836133672*_("kPa"));
+
+    TEST_CHECK(w == min(w,x));
+    TEST_CHECK(y == min(w,x,y));
+    TEST_CHECK(z == min(y,x,z));
+    TEST_CHECK(x == max(w,x));
+    TEST_CHECK(x == max(w,x,y));
+    TEST_CHECK(x == max(y,x,z));
+
+}
 
 /*
 void other_function() {
@@ -1705,5 +1744,6 @@ TEST_LIST = {
     {"Qty-Operators12",test_Qty_operators12},
     {"Qty-Operators13",test_Qty_operators13},
     {"Qty-Operators14",test_Qty_operators14},
+    {"Qty-Operators15",test_Qty_operators15},
     {NULL,NULL}
 };
