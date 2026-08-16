@@ -1783,11 +1783,11 @@ public:
     }
 
     _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator/=(double rhs) {
-        number *= rhs;
+        number /= rhs;
         return *this;
     }
 
-    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-() {
+    _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> operator-() const {
         return Qty<U>{-number};
     }
 
@@ -1796,6 +1796,7 @@ public:
 
     template <UTxt V> friend class Qty;
 
+
     template <UTxt W, UTxt V>
     friend consteval inline double
     conversionFactor(const Qty<W> /*from*/, const Qty<V> /*to*/);
@@ -1803,18 +1804,29 @@ public:
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, const Qty<V> rhs);
 
+    template <UTxt W>
+    friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, double rhs);
+
+    template <UTxt W>
+    friend _CONSTEXPR_ auto operator+(double lhs, const Qty<W> rhs);
+
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ Qty<W> operator-(const Qty<W> lhs, const Qty<V> rhs);
 
+    template <UTxt W>
+    friend _CONSTEXPR_ Qty<W> operator-(const Qty<W> lhs, double rhs) requires(UnitDefinition{W}.isNonDimensional() == true);
+
+    template <UTxt W>
+    friend _CONSTEXPR_ auto operator-(double lhs, const Qty<W> rhs) requires(UnitDefinition{W}.isNonDimensional() == true);
+
     template <UTxt W, UTxt V>
-    friend _CONSTEXPR_ auto operator*(const Qty<W> lhs, const Qty<V> rhs);
+    friend _CONSTEXPR_ inline auto operator*(const Qty<W> lhs, const Qty<V> rhs);
 
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ auto operator/(const Qty<W> lhs, const Qty<V> rhs);
 
     template <UTxt V>
-    friend _CONSTEXPR_ inline auto operator/(const int lhs,
-                                                          const Qty<V> rhs);
+    friend _CONSTEXPR_ inline auto operator/(const int lhs, const Qty<V> rhs) requires(sizeof(int)!=sizeof(int64_t));
 
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator/(const int64_t lhs,
@@ -1822,8 +1834,10 @@ public:
     template <UTxt V>
     friend _CONSTEXPR_ inline auto operator/(const double lhs,
                                                const Qty<V> rhs);
-    // Operator *= or /= with another unit does not exist, a variable cannot
-    // change units once declared. For that use case, use the RQty class.
+
+    template <UTxt V, UTxt W>
+    friend _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<W> rhs);
+
     template <int64_t EXP, UTxt V>
     friend _CONSTEXPR_ inline auto pow(const Qty<V> lhs);
     template <int64_t NUM, int64_t DEN, UTxt V>
@@ -1925,6 +1939,12 @@ conversionFactor(const Qty<W> /*from*/, const Qty<V> /*to*/) {
 // Convention: Resulting unit of an addition or subtraction is always the unit
 // of the left argument This is done to guarantee that adding with += operations
 // do not change the unit of the result
+template <UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
+                                               const Qty<W> rhs) {
+    return Qty<W>{lhs.value()+rhs.value()};
+}
+
 template <UTxt W, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
                                                const Qty<V> rhs) {
@@ -1933,12 +1953,50 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
     return Qty<W>{finalvalue};
 }
 
+template <UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
+                                               double rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
+    const auto convFactor = conversionFactor(Qty<"">::unitDef, Qty<W>::unitDef);
+    double finalvalue = lhs.value() + rhs * convFactor;
+    return Qty<W>{finalvalue};
+}
+
+template <UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator+(double lhs,
+                                             const Qty<W> rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
+    const auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<"">::unitDef);
+    double finalvalue = lhs + rhs.value() * convFactor;
+    return Qty<"">{finalvalue};
+}
+
+template <UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
+                                               const Qty<W> rhs) {
+    return Qty<W>{lhs.value()-rhs.value()};
+}
+
 template <UTxt W, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
                                                const Qty<V> rhs) {
     const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
     double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<W>{finalvalue};
+}
+
+template <UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
+                                               double rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
+    const auto convFactor = conversionFactor(Qty<"">::unitDef, Qty<W>::unitDef);
+    double finalvalue = lhs.value() - rhs * convFactor;
+    return Qty<W>{finalvalue};
+}
+
+template <UTxt W>
+_OPTIMIZE_ _CONSTEXPR_ inline auto operator-(double lhs,
+                                             const Qty<W> rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
+    const auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<"">::unitDef);
+    double finalvalue = lhs - rhs.value() * convFactor;
+    return Qty<"">{finalvalue};
 }
 
 // Multiplication operator for 2 units
@@ -1996,7 +2054,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int64_t lhs,
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const int lhs,
-                                               const Qty<V> rhs) {
+                                               const Qty<V> rhs) requires(sizeof(int)!=sizeof(int64_t)) {
     double finalvalue = lhs * rhs.value();
     return Qty<V>{finalvalue};
 }
@@ -2021,7 +2079,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator*(const Qty<V> lhs,
-                                               const int rhs) {
+                                               const int rhs) requires(sizeof(int)!=sizeof(int64_t)) {
     double finalvalue = rhs * lhs.value();
     return Qty<V>{finalvalue};
 }
@@ -2057,7 +2115,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const int64_t lhs,
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const int lhs,
-                                               const Qty<V> rhs) {
+                                               const Qty<V> rhs) requires(sizeof(int)!=sizeof(int64_t)) {
     constexpr const auto finalUnit =
         Qty<V>::unitDef.invert().update();
     constexpr const auto finalUnitDefinition =
@@ -2086,12 +2144,10 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
 // Simply preserves the original unit
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
-                                               const int rhs) {
+                                               const int rhs) requires(sizeof(int)!=sizeof(int64_t)) {
     return Qty<V>{lhs.value() / rhs};
 }
 
-
-constexpr int64_t toConstExpr(const int64_t num) { return num; }
 
 template <int64_t EXP, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
@@ -2118,22 +2174,54 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto sqrt(const Qty<V> lhs) {
     return pow<1,2>(lhs);
 }
 
+// Equality between same units is the same as comparing 'double' values
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<V> rhs) {
+    return lhs.value()==rhs.value();
+}
+
+// Comparison of different units includes 1-bit precision loss tolerance for the
+// implicit unit conversion
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<W> rhs) {
-    const auto residual = lhs-rhs;
-    return std::abs(residual.value())<1e-15;
+    const auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<V>::unitDef);
+    // Allow loss of 1 bit due to unit conversion factor in the check for equality
+    double finalvalue = rhs.value() * convFactor;
+    finalvalue  = std::bit_cast<double>(std::bit_cast<uint64_t>(finalvalue)|1ULL);
+    double lhsfinal = std::bit_cast<double>(std::bit_cast<uint64_t>(lhs.value())|1ULL);
+    return lhsfinal == finalvalue;
+}
+
+// Operators with double to avoid automatic downgrade to a double comparison
+// The downgrade would bypass the 1-bit tolerance if the unit is not true non-dimensional
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const double rhs) {
+    return lhs==Qty<"">{rhs};
+}
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const double lhs, const Qty<V> rhs) {
+    return rhs==Qty<"">{lhs};
 }
 
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator !=(const Qty<V> lhs, const Qty<W> rhs) {
-    const auto residual = lhs-rhs;
-    return std::abs(residual.value())>=1e-15;
+    return !(lhs==rhs);
+}
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator <(const Qty<V> lhs, const Qty<V> rhs) {
+    return lhs.value()<rhs.value();
 }
 
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator <(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
     return residual.value()<0.0;
+}
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator <=(const Qty<V> lhs, const Qty<V> rhs) {
+    return lhs.value()<=rhs.value();
 }
 
 template <UTxt V, UTxt W>
@@ -2142,11 +2230,22 @@ _OPTIMIZE_ _CONSTEXPR_ inline bool operator <=(const Qty<V> lhs, const Qty<W> rh
     return residual.value()<=0.0;
 }
 
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator >(const Qty<V> lhs, const Qty<V> rhs) {
+    return lhs.value()>rhs.value();
+}
+
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator >(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
     return residual.value()>0.0;
 }
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator >=(const Qty<V> lhs, const Qty<V> rhs) {
+    return lhs.value()>=rhs.value();
+}
+
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator >=(const Qty<V> lhs, const Qty<W> rhs) {
     const auto residual = lhs-rhs;
@@ -2161,6 +2260,12 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> min(const Qty<V> lhs, const Qty<W> rhs) {
         return rhs;
     }
 }
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto min(const Qty<V> lhs, double rhs) { return min(lhs,Qty<"">{rhs}); }
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto min(double lhs, const Qty<V> rhs) { return min(Qty<"">{lhs},rhs); }
+
 template <UTxt V, UTxt W, UTxt X>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> min(const Qty<V> lhs, const Qty<W> rhs, const Qty<X> uhs) {
     return min(lhs,min(rhs,uhs));
@@ -2174,6 +2279,12 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> max(const Qty<V> lhs, const Qty<W> rhs) {
         return rhs;
     }
 }
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto max(const Qty<V> lhs, double rhs) { return max(lhs,Qty<"">{rhs}); }
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline auto max(double lhs, const Qty<V> rhs) { return max(Qty<"">{lhs},rhs); }
+
 template <UTxt V, UTxt W, UTxt X>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> max(const Qty<V> lhs, const Qty<W> rhs, const Qty<X> uhs) {
     return max(lhs,max(rhs,uhs));

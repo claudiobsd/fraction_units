@@ -1,5 +1,6 @@
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 
 #include "fraction_units.hpp"
 
@@ -1544,6 +1545,8 @@ void test_Qty_operators15() {
 
     auto z = (-10)*_("psi");
 
+    auto zz = w/y;
+
     TEST_CHECK(w < x);
     TEST_CHECK(w > y);
     TEST_CHECK(w > z);
@@ -1563,9 +1566,10 @@ void test_Qty_operators15() {
     TEST_CHECK(w < 2*y);
     TEST_CHECK(w > x/2);
     TEST_CHECK(w == -z);
-    TEST_CHECK(w == 68.9475729316836133672*_("kPa"));
-    TEST_CHECK(w <= 68.9475729316836133672*_("kPa"));
-    TEST_CHECK(w >= 68.9475729316836133672*_("kPa"));
+    TEST_CHECK(w == 68.94757293168361'33672*_("kPa"));
+    // Allow for variation in the very last digit
+    TEST_CHECK(w <= 68.94757293168362*_("kPa"));
+    TEST_CHECK(w >= 68.94757293168360*_("kPa"));
 
     TEST_CHECK(w == min(w,x));
     TEST_CHECK(y == min(w,x,y));
@@ -1573,6 +1577,24 @@ void test_Qty_operators15() {
     TEST_CHECK(x == max(w,x));
     TEST_CHECK(x == max(w,x,y));
     TEST_CHECK(x == max(y,x,z));
+
+    TEST_CHECK(zz < 1.4);
+    TEST_CHECK(1.4 > zz);
+    TEST_CHECK(1.3 < zz);
+    TEST_CHECK(zz > 1.3);
+
+    // This case is tricky because the comparison of a Qty
+    // with a double may down-convert units to double
+    // and once it's a double the standard operator == will be
+    // used. Unit tests may fail because of the last bit
+    // which might be wrong due to unit conversion.
+    // We offer specialized operator == that will add tolerance
+    // in the last bit of the 'double' value.
+
+    TEST_CHECK(min(zz,1.0) == 1.0);
+    TEST_CHECK(min(1.0, zz) == 1.0);
+    TEST_CHECK(max(zz,1.4) == 1.4);
+    TEST_CHECK(max(1.4, zz) == 1.4);
 
 }
 
