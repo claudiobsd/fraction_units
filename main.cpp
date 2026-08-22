@@ -1611,6 +1611,14 @@ void test_Qty_operators16() {
 
     TEST_CHECK(maximum == stress1);
 
+    auto check1 = 1'000'000*_("N/m^2");
+    auto check2 = 1*_("mm^4");
+    auto check3 = 1*_("MPa");
+    auto check4 = 1*_("mm^3");
+
+    auto result = check1 * check2 / (check3 * check4);
+    TEST_CHECK(result == 1*_("mm"));
+
 }
 
 

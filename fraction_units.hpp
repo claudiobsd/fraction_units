@@ -1119,7 +1119,7 @@ struct UnitDefinition {
                 }
                 size_t k;
                 for (k = 0; k < len; ++k) {
-                    if (result.u_def[definition[j].tokStart + k] !=
+                    if (result.u_def[result.definition[j].tokStart + k] !=
                         other.u_def[other.definition[i].tokStart + k]) {
                         break;
                     }
@@ -1759,7 +1759,7 @@ public:
     }
 
     _OPTIMIZE_ _CONSTEXPR_ inline operator double() const requires (UnitDefinition{U}.isNonDimensional() == true) {
-        const auto convFactor = conversionFactorTo(Qty<"">{});
+        constexpr auto convFactor = conversionFactorTo(Qty<"">{});
         return number * convFactor;
     }
     // Addition operator for 2 units
@@ -1768,7 +1768,7 @@ public:
     // operations do not change the unit of the result
     template <UTxt V>
     _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator+=(const Qty<V> rhs) {
-        const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<U>::unitDef);
+        constexpr auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<U>::unitDef);
         number += rhs.number * convFactor;
         return *this;
     }
@@ -1778,7 +1778,7 @@ public:
     // operations do not change the unit of the result
     template <UTxt V>
     _OPTIMIZE_ _CONSTEXPR_ inline Qty<U> &operator-=(const Qty<V> rhs) {
-        const auto convFactor = conversionFactor(Qty<V>::unitDef,Qty<U>::unitDef);
+        constexpr auto convFactor = conversionFactor(Qty<V>::unitDef,Qty<U>::unitDef);
         number -= rhs.number * convFactor;
         return *this;
     }
@@ -1955,7 +1955,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
 template <UTxt W, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
                                                const Qty<V> rhs) {
-    const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
     double finalvalue = lhs.value() + rhs.value() * convFactor;
     return Qty<W>{finalvalue};
 }
@@ -1963,7 +1963,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
 template <UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
                                                double rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
-    const auto convFactor = conversionFactor(Qty<"">::unitDef, Qty<W>::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<"">::unitDef, Qty<W>::unitDef);
     double finalvalue = lhs.value() + rhs * convFactor;
     return Qty<W>{finalvalue};
 }
@@ -1971,7 +1971,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator+(const Qty<W> lhs,
 template <UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator+(double lhs,
                                              const Qty<W> rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
-    const auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<"">::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<"">::unitDef);
     double finalvalue = lhs + rhs.value() * convFactor;
     return Qty<"">{finalvalue};
 }
@@ -1985,7 +1985,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
 template <UTxt W, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
                                                const Qty<V> rhs) {
-    const auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<V>::unitDef, Qty<W>::unitDef);
     double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<W>{finalvalue};
 }
@@ -1993,7 +1993,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
 template <UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
                                                double rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
-    const auto convFactor = conversionFactor(Qty<"">::unitDef, Qty<W>::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<"">::unitDef, Qty<W>::unitDef);
     double finalvalue = lhs.value() - rhs * convFactor;
     return Qty<W>{finalvalue};
 }
@@ -2001,7 +2001,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<W> operator-(const Qty<W> lhs,
 template <UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator-(double lhs,
                                              const Qty<W> rhs) requires(UnitDefinition{W}.isNonDimensional() == true) {
-    const auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<"">::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<"">::unitDef);
     double finalvalue = lhs - rhs.value() * convFactor;
     return Qty<"">{finalvalue};
 }
@@ -2191,7 +2191,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<V> rh
 // implicit unit conversion
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<W> rhs) {
-    const auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<V>::unitDef);
+    constexpr auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<V>::unitDef);
     // Allow loss of 1 bit due to unit conversion factor in the check for equality
     double finalvalue = rhs.value() * convFactor;
     finalvalue  = std::bit_cast<double>(std::bit_cast<uint64_t>(finalvalue)|1ULL);
@@ -2466,12 +2466,12 @@ public:
     // operations do not change the unit of the result
     template <UTxt V>
     _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator+=(const Qty<V> &rhs) {
-        const auto convFactor = conversionFactorFrom(rhs);
+        constexpr auto convFactor = conversionFactorFrom(rhs);
         number += rhs.number * convFactor;
         return *this;
     }
     _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator+=(const RQty &rhs) {
-        const auto convFactor = rhs.conversionFactorTo(*this);
+        constexpr auto convFactor = rhs.conversionFactorTo(*this);
         number += rhs.number * convFactor;
         return *this;
     }
@@ -2481,19 +2481,19 @@ public:
         constexpr Qty<""> nonDimensional{1.0};
         // Conversion will throw "Incompatible units" error unless our unit is
         // non-dimensional
-        const auto convFactor = conversionFactorFrom(nonDimensional);
+        constexpr auto convFactor = conversionFactorFrom(nonDimensional);
         number += rhs * convFactor;
         return *this;
     }
 
     template <UTxt V>
     _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator-=(const Qty<V> &rhs) {
-        const auto convFactor = conversionFactorFrom(rhs);
+        constexpr auto convFactor = conversionFactorFrom(rhs);
         number -= rhs.number * convFactor;
         return *this;
     }
     _OPTIMIZE_ _CONSTEXPR_ inline RQty &operator-=(const RQty &rhs) {
-        const auto convFactor = rhs.conversionFactorTo(*this);
+        constexpr auto convFactor = rhs.conversionFactorTo(*this);
         number -= rhs.number * convFactor;
         return *this;
     }
@@ -2503,7 +2503,7 @@ public:
         constexpr Qty<""> nonDimensional{1.0};
         // Conversion will throw "Incompatible units" error unless our unit is
         // non-dimensional
-        const auto convFactor = conversionFactorFrom(nonDimensional);
+        constexpr auto convFactor = conversionFactorFrom(nonDimensional);
         number -= rhs * convFactor;
         return *this;
     }
@@ -2591,19 +2591,19 @@ private:
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator+(const RQty &lhs,
                                              const Qty<V> &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+    constexpr auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() + rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator+(const Qty<V> &lhs,
                                              const RQty &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+    constexpr auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() + rhs.value() * convFactor;
     return Qty<V>{finalvalue};
 }
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator+(const RQty &lhs, const RQty &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+    constexpr auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() + rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
@@ -2611,19 +2611,19 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator+(const RQty &lhs, const RQty &rhs) {
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator-(const RQty &lhs,
                                              const Qty<V> &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+    constexpr auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() - rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator-(const Qty<V> &lhs,
                                              const RQty &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+    constexpr auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() - rhs.value() * convFactor;
     return Qty<V>{finalvalue};
 }
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator-(const RQty &lhs, const RQty &rhs) {
-    const auto convFactor = rhs.conversionFactorTo(lhs);
+    constexpr auto convFactor = rhs.conversionFactorTo(lhs);
     const double finalvalue = lhs.value() - rhs.value() * convFactor;
     return RQty{finalvalue, lhs.unitDef};
 }
