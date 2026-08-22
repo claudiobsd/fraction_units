@@ -1812,10 +1812,10 @@ public:
     friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, const Qty<V> rhs);
 
     template <UTxt W>
-    friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, double rhs);
+    friend _CONSTEXPR_ Qty<W> operator+(const Qty<W> lhs, double rhs) requires(UnitDefinition{W}.isNonDimensional() == true);
 
     template <UTxt W>
-    friend _CONSTEXPR_ auto operator+(double lhs, const Qty<W> rhs);
+    friend _CONSTEXPR_ auto operator+(double lhs, const Qty<W> rhs) requires(UnitDefinition{W}.isNonDimensional() == true);
 
     template <UTxt W, UTxt V>
     friend _CONSTEXPR_ Qty<W> operator-(const Qty<W> lhs, const Qty<V> rhs);
