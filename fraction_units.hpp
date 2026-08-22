@@ -1087,8 +1087,8 @@ struct UnitDefinition {
     // Multiply two different units
     _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ UnitDefinition
     multiply(const UnitDefinition &other) const {
-        UnitDefinition result = *this;
 
+        UnitDefinition result = *this;
         // We'll need to add to the definition string to keep the token strings,
         // find the end
         size_t location;
@@ -1110,7 +1110,7 @@ struct UnitDefinition {
             size_t j;
             size_t len;
             for (j = 0; j < maxTokens; ++j) {
-                len = definition[j].tokEnd - definition[j].tokStart;
+                len = result.definition[j].tokEnd - result.definition[j].tokStart;
                 if (len == 0) {
                     break;
                 }
@@ -1119,7 +1119,7 @@ struct UnitDefinition {
                 }
                 size_t k;
                 for (k = 0; k < len; ++k) {
-                    if (u_def[definition[j].tokStart + k] !=
+                    if (result.u_def[definition[j].tokStart + k] !=
                         other.u_def[other.definition[i].tokStart + k]) {
                         break;
                     }
@@ -1132,7 +1132,7 @@ struct UnitDefinition {
             if (j != maxTokens && len > 0) {
                 // Found the symbol, so add the exponents
                 auto numDenPair =
-                    addfraction(definition[j].expNum, definition[j].expDen,
+                    addfraction(result.definition[j].expNum, result.definition[j].expDen,
                                               other.definition[i].expNum, other.definition[i].expDen);
                 result.definition[j].expNum = numDenPair.first;
                 result.definition[j].expDen = numDenPair.second;
@@ -1190,6 +1190,13 @@ struct UnitDefinition {
         // definition string needs to be regenerated
         //        result.regeneratestring();
         return result;
+    }
+
+    // Minimalistic simplification: only merges any repeated tokens (like m*m*m ==> m^3)
+    _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ UnitDefinition basicsimplify() const {
+        // Simplify by multiplying by 1;
+        UnitDefinition result;
+        return result.multiply(*this);
     }
 
     // Apply a fractional exponent to a unit
@@ -2011,7 +2018,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator*(const Qty<W> lhs,
     // Guarantee all _CONSTEXPR_ constants so the operation is fully constevaled
     // even if the arguments have unknown values at compile time
     constexpr const auto finalUnit =
-        Qty<W>::unitDef.multiply(Qty<V>::unitDef).update();
+        Qty<W>::unitDef.multiply(Qty<V>::unitDef).basicsimplify().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
@@ -2025,7 +2032,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const Qty<U> lhs,
     // even if the arguments have unknown values at compile time
     _CONSTEXPR_ Qty<U> lhsUnit{1.0};
     _CONSTEXPR_ Qty<V> rhsUnit{1.0};
-    _CONSTEXPR_ auto finalUnit = lhsUnit.unitDef.divide(rhsUnit.unitDef).update();
+    _CONSTEXPR_ auto finalUnit = lhsUnit.unitDef.divide(rhsUnit.unitDef).basicsimplify().update();
     constexpr auto finalUnitDefinition = to_UTxt<finalUnit.u_defLen>(finalUnit);
 
     // This it the only operation the compiler will do at run time if needed
@@ -2091,7 +2098,7 @@ template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const double lhs,
                                                const Qty<V> rhs) {
     constexpr const auto finalUnit =
-        Qty<V>::unitDef.invert().update();
+        Qty<V>::unitDef.invert().basicsimplify().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
@@ -2104,7 +2111,7 @@ template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const int64_t lhs,
                                                const Qty<V> rhs) {
     constexpr const auto finalUnit =
-        Qty<V>::unitDef.invert().update();
+        Qty<V>::unitDef.invert().basicsimplify().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
@@ -2117,7 +2124,7 @@ template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto operator/(const int lhs,
                                                const Qty<V> rhs) requires(sizeof(int)!=sizeof(int64_t)) {
     constexpr const auto finalUnit =
-        Qty<V>::unitDef.invert().update();
+        Qty<V>::unitDef.invert().basicsimplify().update();
     constexpr const auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
@@ -2152,7 +2159,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> operator/(const Qty<V> lhs,
 template <int64_t EXP, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
     constexpr auto finalUnit =
-        Qty<V>::unitDef.pow(EXP,1).update();
+        Qty<V>::unitDef.pow(EXP,1).basicsimplify().update();
     constexpr auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
@@ -2162,7 +2169,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
 template <int64_t NUM, int64_t DEN, UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
     constexpr auto finalUnit =
-        Qty<V>::unitDef.pow(NUM,DEN).update();
+        Qty<V>::unitDef.pow(NUM,DEN).basicsimplify().update();
     constexpr auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed

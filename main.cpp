@@ -1598,6 +1598,22 @@ void test_Qty_operators15() {
 
 }
 
+void test_Qty_operators16() {
+
+    auto stress1 = 1000*_("MPa");
+    auto stress2 = 2*_("MPa/MPa^1/2")*sqrt(stress1);
+
+    double convfactor = stress1.conversionFactorTo(stress2);
+
+    auto maximum = max(stress2, stress1);
+
+    TEST_CHECK(convfactor == 1.0);
+
+    TEST_CHECK(maximum == stress1);
+
+}
+
+
 /*
 void other_function() {
     Qty<"m"> x = 50.0*_("m");
@@ -1767,5 +1783,6 @@ TEST_LIST = {
     {"Qty-Operators13",test_Qty_operators13},
     {"Qty-Operators14",test_Qty_operators14},
     {"Qty-Operators15",test_Qty_operators15},
+    {"Qty-Operators16",test_Qty_operators16},
     {NULL,NULL}
 };
