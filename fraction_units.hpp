@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cmath>
 #include <bit>
 
 // Define this as-needed to enable the run time component class
@@ -2300,6 +2301,15 @@ _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> max(const Qty<V> lhs, const Qty<W> rhs, con
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline Qty<V> abs(const Qty<V> lhs) {
     return lhs.value()<0.0? -lhs : lhs;
+}
+
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> ceil(const Qty<V> lhs) {
+    return Qty<V>{std::ceil(lhs.value())};
+}
+template <UTxt V>
+_OPTIMIZE_ _CONSTEXPR_ inline Qty<V> floor(const Qty<V> lhs) {
+    return Qty<V>{std::floor(lhs.value())};
 }
 
 // ********************************************************************************************************************
