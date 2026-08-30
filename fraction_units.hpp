@@ -491,7 +491,7 @@ simplifyfraction(int64_t a_num, int64_t a_den) {
 }
 
 _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ std::pair<int64_t, int64_t>
-simplifyfraction128(integer128 a_num, integer128 a_den) {
+simplifyfraction128(integer128 a_num, integer128 a_den, int64_t& exp10) {
     auto divisor = gcd128(integer128::abs128(a_num), integer128::abs128(a_den));
     if (divisor.hiword>0 || divisor.loword > 1) {
     a_num = a_num / divisor;
@@ -499,13 +499,55 @@ simplifyfraction128(integer128 a_num, integer128 a_den) {
     }
     if ((a_num.hiword != 0ULL && a_num.hiword != ~0ULL) ||
         (a_den.hiword != 0ULL && a_den.hiword != ~0ULL)) {
-        // Lose some precision here...
-        while(a_num.hiword || a_den.hiword) {
+
+        while(a_num.hiword<(1ULL<<59) && a_num<a_den) {
+            // Increase the numerator to match denominator
+               // a_num/a_den == (a_num*10)/a_den * 10^(exp10)/10
+            a_num=integer128::add128(a_num<<3,a_num<<1); // a_num *=10;
+            exp10--;
+        }
+        while(a_den.hiword<(1ULL<<59) && a_den<a_num) {
+            // Increase the denominator to match numerator
+            // a_num/a_den == a_num/(a_den*10) * 10^(exp10)*10
+            a_den=integer128::add128(a_den<<3,a_den<<1); // a_den *=10;
+            exp10++;
+        }
+
+        // Lose some precision here... discard bits until both numerator and denominator fit in 64-bits
+        uint64_t discard_mask = 1ULL;
+        int bitcount = 1;
+        while((a_num.hiword>discard_mask || a_den.hiword>discard_mask) && discard_mask) {
+            discard_mask<<=1;
+            ++bitcount;
+        }
+        if(!discard_mask) {
+            // We are discarding all 64 bits
+            if(a_num.loword&(1ULL<<63)) {
+                ++a_num.hiword;
+            }
+            if(a_den.loword&(1ULL<<63)) {
+                ++a_den.hiword;
+            }
+            a_num.loword=a_num.hiword;
+            a_den.loword=a_den.hiword;
+            a_num.hiword=0;
+            a_den.hiword=0;
+        }
+        else {
+        // Round the last bit
+        a_num = integer128::add128(a_num,{discard_mask,0});
+        a_den = integer128::add128(a_den,{discard_mask,0});
+
+        a_num = a_num >> bitcount;
+        a_den = a_den >> bitcount;
+        }
+
+        if(a_num.loword&(1ULL<<63) || a_den.loword&(1ULL<<63)) {
             a_num = a_num >> 1;
             a_den = a_den >> 1;
         }
 
-        //throw "Precision loss";
+
     }
     return {a_num.loword, a_den.loword};
 }
@@ -1183,10 +1225,11 @@ struct UnitDefinition {
         // Watch out for integer overflow in these multiplications
         integer128 value_ip128 = integer128::mul64x64(result.value_ip,other.value_ip);
         integer128 value_den128 = integer128::mul64x64(result.value_den, other.value_den);
-        auto fraction128 = simplifyfraction128(value_ip128,value_den128);
+        int64_t exp10correction = 0;
+        auto fraction128 = simplifyfraction128(value_ip128,value_den128, exp10correction);
         result.value_ip=fraction128.first;
         result.value_den=fraction128.second;
-        result.value_exp += other.value_exp;
+        result.value_exp += other.value_exp + exp10correction;
 
         // definition string needs to be regenerated
         //        result.regeneratestring();
@@ -1230,6 +1273,27 @@ struct UnitDefinition {
                 double numerator = intpow(introot((double)result.value_ip,expDen),intabs(expNum));
                 double denominator = intpow(introot((double)result.value_den,expDen),intabs(expNum));
 
+                // Deal with the exponent first
+                auto expfraction = simplifyfraction(result.value_exp*expNum,expDen);
+
+                if(expfraction.second!=1) {
+                    // We still have a fractional exponent of 10, split into integer and fractional part
+                    // 10^(N+p/q) = 10^N * 10^(p/q) with p/q<1.0
+                    int64_t newExponent = (result.value_exp * expNum)/expDen;
+                    int64_t expRemainder = (result.value_exp * expNum) - newExponent*expDen;
+                    double exponentCorrection = intpow(introot(10.0,expDen), intabs(expRemainder));
+                    bool expAffectsNumerator = (expNum*expRemainder)>=0;
+                    if(expAffectsNumerator) {
+                        numerator *= exponentCorrection;
+                    }
+                    else {
+                        denominator *= exponentCorrection;
+                    }
+                    result.value_exp = newExponent;
+                } else {
+                    result.value_exp = expfraction.first;
+                }
+
                 // Now try to extract a fraction
                 int num_exponent2 = dbl_exponent(numerator);
                 double num_mant = dbl_mantissa(numerator);
@@ -1255,15 +1319,19 @@ struct UnitDefinition {
                     num128 = num128 << num_exponent2;
                 }
 
-                auto fraction = simplifyfraction128(num128, den128);
+                int64_t exp10correction = 0;
+                auto fraction = simplifyfraction128(num128, den128, exp10correction);
+
 
                 if(invertFraction) {
-                    result.value_den=fraction.first;
-                    result.value_ip=fraction.second;
+                    result.value_den = fraction.first;
+                    result.value_ip = fraction.second;
+                    result.value_exp -= exp10correction;
                 }
                 else {
                 result.value_ip = fraction.first;
                 result.value_den = fraction.second;
+                result.value_exp += exp10correction;
                 }
             }
         }
@@ -1272,7 +1340,7 @@ struct UnitDefinition {
             auto fractionexponent = simplifyfraction(result.definition[i].expNum * expNum, result.definition[i].expDen * expDen);
             result.definition[i].expNum = fractionexponent.first;
             result.definition[i].expDen = fractionexponent.second;
-            if (definition[i].tokStart == definition[i].tokEnd)
+            if (result.definition[i].tokStart == result.definition[i].tokEnd)
                 break;
         }
         return result;
@@ -2185,7 +2253,10 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto sqrt(const Qty<V> lhs) {
 // Equality between same units is the same as comparing 'double' values
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<V> rhs) {
-    return lhs.value()==rhs.value();
+    // Allow 4 bits being wrong after conversions
+    uint64_t lhsfinal = std::bit_cast<uint64_t>(lhs.value());
+    uint64_t rhsfinal = std::bit_cast<uint64_t>(rhs.value());
+    return (lhsfinal^rhsfinal)<16ULL;
 }
 
 // Comparison of different units includes 1-bit precision loss tolerance for the
@@ -2193,11 +2264,11 @@ _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<V> rh
 template <UTxt V, UTxt W>
 _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<W> rhs) {
     constexpr auto convFactor = conversionFactor(Qty<W>::unitDef, Qty<V>::unitDef);
-    // Allow loss of 1 bit due to unit conversion factor in the check for equality
+    // Allow loss of 4 bits due to unit conversion factor in the check for equality
     double finalvalue = rhs.value() * convFactor;
-    finalvalue  = std::bit_cast<double>(std::bit_cast<uint64_t>(finalvalue)|1ULL);
-    double lhsfinal = std::bit_cast<double>(std::bit_cast<uint64_t>(lhs.value())|1ULL);
-    return lhsfinal == finalvalue;
+    uint64_t lhsfinal = std::bit_cast<uint64_t>(lhs.value());
+    uint64_t rhsfinal = std::bit_cast<uint64_t>(finalvalue);
+    return (lhsfinal^rhsfinal)<16ULL;
 }
 
 // Operators with double to avoid automatic downgrade to a double comparison

@@ -1004,7 +1004,7 @@ void test_UnitDefinition_update5()
 
     TEST_CHECK(updated.value_ip==3900231685776981);
     TEST_CHECK(updated.value_den==5957702309312746);
-    TEST_CHECK(updated.value_exp==2);
+    TEST_CHECK(updated.value_exp==1);
 
     // 'm'
     TEST_CHECK(updated.definition[0].tokEnd==updated.definition[0].tokStart+1);
@@ -1014,7 +1014,7 @@ void test_UnitDefinition_update5()
     TEST_CHECK(updated.definition[1].tokStart==0);
     TEST_CHECK(updated.definition[1].tokEnd==0);
 
-    const char expected[]="3900231685776981e2/5957702309312746_m^1/2";
+    const char expected[]="3900231685776981e1/5957702309312746_m^1/2";
 
     for(auto i=0;expected[i]!=0;++i) {
         TEST_CHECK(updated.u_def[i]==expected[i]);
@@ -1618,6 +1618,25 @@ void test_Qty_operators16() {
 
     auto result = check1 * check2 / (check3 * check4);
     TEST_CHECK(result == 1*_("mm"));
+
+    auto mpa = 27.6*_("MPa^2");
+    auto psi = 1.0*_("psi^2");
+
+    convfactor = psi.conversionFactorTo(mpa);
+    TEST_CHECK(convfactor>0.0);
+
+    auto fc = 27.6*_("MPa");
+    auto check5 = 1*_("psi^(1/2)");
+    auto check6 = check5*sqrt(fc);
+   auto regularpsi = sqrt(psi);
+
+    double otherconv = check6.conversionFactorTo(regularpsi);
+
+    TEST_CHECK(std::abs(otherconv-12.0431614508072262725328411) < 1e-14);
+
+    Qty<"psi"> shearfc = 2.0*_("psi^1/2")*sqrt(fc);
+
+    TEST_CHECK(shearfc==126.5391885757732261626*_("psi"));
 
 }
 
