@@ -2,6 +2,7 @@
 #include <iostream>
 #include <iomanip>
 
+#define RUNTIME_COMPONENT 1
 #include "fraction_units.hpp"
 
 #include "external/test/include/acutest.h"
@@ -1641,6 +1642,615 @@ void test_Qty_operators16() {
 }
 
 
+void test_RQty_operators1() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    RQty x = 50.0*_("m");
+
+    TEST_CHECK(x.value() == 50.0);
+}
+
+void test_RQty_operators2() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    RQty x = 50.0*_("m");
+
+    auto y=x+(10.0*_("cm"));
+
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    double actual_y = y.value();
+    TEST_CHECK(actual_y == 50.1);
+}
+
+void test_RQty_operators3() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    RQty x = 50.0*_("m");
+
+    RQty z = 10.0*_("cm");
+    auto y=x-z;
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    double actual_y = y.value();
+    TEST_CHECK(actual_y == 49.9);
+}
+
+void test_RQty_operators4() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    RQty x = 50.0*_("m");
+
+    // Multiplication operator is different from addition/subtraction in that it
+    // creates a new unit from the multiplication of the units. No unit simplification
+    // is performed, in this case it will simply multiply the numbers and
+    // apply a unit "m*cm"
+    const auto y=x*10.0*_("cm");
+
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    TEST_CHECK(y.value() == 500.0);
+    TEST_CHECK(y.unit()[0]=='m');
+    TEST_CHECK(y.unit()[1]=='*');
+    TEST_CHECK(y.unit()[2]=='c');
+    TEST_CHECK(y.unit()[3]=='m');
+    TEST_CHECK(y.unit()[4]==0);
+
+}
+
+void test_RQty_operators5() {
+    // Try to use some quantities, this is all constexpr so verify the compiler
+    // generates code that simply stores the number and nothing else
+    // First test just test defining a constexpr with assignment of the same unit
+    RQty x(50.0, "m");
+
+    // Multiplication operator is different from addition/subtraction in that it
+    // creates a new unit from the multiplication of the units. No unit simplification
+    // is performed, in this case it will simply multiply the numbers and
+    // apply a unit "cm*m" since it is NOT commutative
+    const auto y=x/(10.0*_("cm"));
+
+    // Just storing a value with no conversion should be exact to 'double' precision
+    // Since no math operations were performed
+    TEST_CHECK(x.value() == 50.0);
+    // Unit conversion is done in double precision, so result
+    // should be EXACT in double precision, except in very rare corner cases
+    // Force a conversion to double so the compiler downgrades to double precision.
+    TEST_CHECK(y.value() == 5.0);
+    TEST_CHECK(y.unit()[0]=='m');
+    TEST_CHECK(y.unit()[1]=='/');
+    TEST_CHECK(y.unit()[2]=='c');
+    TEST_CHECK(y.unit()[3]=='m');
+    TEST_CHECK(y.unit()[4]==0);
+}
+
+
+void test_RQty_operators6() {
+    // Comprehensive test of addition
+    RQty x = 50.0*_("m");
+    RQty addendum_no_conversion(0.1,"m");
+    RQty addendum_conversion(10.0, "cm");
+
+    auto y1=x+addendum_no_conversion;
+    TEST_CHECK(y1.value() == 50.1);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=addendum_no_conversion+x;
+    TEST_CHECK(y2.value() == 50.1);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]==0);
+
+    auto y3=addendum_conversion+x;
+    TEST_CHECK(y3.value() == 5010.0);
+    TEST_CHECK(y3.unit()[0]=='c');
+    TEST_CHECK(y3.unit()[1]=='m');
+    TEST_CHECK(y3.unit()[2]==0);
+
+    auto y4=x+addendum_conversion;
+    TEST_CHECK(y4.value() == 50.1);
+    TEST_CHECK(y4.unit()[0]=='m');
+    TEST_CHECK(y4.unit()[1]==0);
+
+}
+
+void test_RQty_operators7() {
+    // Comprehensive test of subtraction
+    RQty x = 50.0*_("m");
+    RQty addendum_no_conversion(0.1,"m");
+    RQty addendum_conversion(10.0,"cm");
+
+    auto y1=x-addendum_no_conversion;
+    TEST_CHECK(y1.value() == 49.9);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=addendum_no_conversion-x;
+    TEST_CHECK(y2.value() == -49.9);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]==0);
+
+    auto y3=addendum_conversion-x;
+    TEST_CHECK(y3.value() == -4990.0);
+    TEST_CHECK(y3.unit()[0]=='c');
+    TEST_CHECK(y3.unit()[1]=='m');
+    TEST_CHECK(y3.unit()[2]==0);
+
+    auto y4=x-addendum_conversion;
+    TEST_CHECK(y4.value() == 49.9);
+    TEST_CHECK(y4.unit()[0]=='m');
+    TEST_CHECK(y4.unit()[1]==0);
+
+}
+
+void test_RQty_operators8() {
+    // Comprehensive test of multiplication by scalar
+    RQty x = 50.0*_("m");
+    int multiplicand_int32 = -123;
+    int64_t multiplicand_int64 = -123;
+    double multiplicand_dbl = -123.0;
+
+    auto y1=x*multiplicand_int32;
+    TEST_CHECK(y1.value() == -6150.0);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=multiplicand_int32*x;
+    TEST_CHECK(y2.value() == -6150.0);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]==0);
+
+    auto y3=x*multiplicand_int64;
+    TEST_CHECK(y3.value() == -6150.0);
+    TEST_CHECK(y3.unit()[0]=='m');
+    TEST_CHECK(y3.unit()[1]==0);
+
+    auto y4=multiplicand_int64*x;
+    TEST_CHECK(y4.value() == -6150.0);
+    TEST_CHECK(y4.unit()[0]=='m');
+    TEST_CHECK(y4.unit()[1]==0);
+
+    auto y5=x*multiplicand_dbl;
+    TEST_CHECK(y5.value() == -6150.0);
+    TEST_CHECK(y5.unit()[0]=='m');
+    TEST_CHECK(y5.unit()[1]==0);
+
+    auto y6=multiplicand_dbl*x;
+    TEST_CHECK(y6.value() == -6150.0);
+    TEST_CHECK(y6.unit()[0]=='m');
+    TEST_CHECK(y6.unit()[1]==0);
+}
+
+void test_RQty_operators9() {
+    // Comprehensive test of division by scalar
+    RQty x = 50.0*_("m");
+    int div_int32 = -123;
+    int64_t div_int64 = -123;
+    double div_dbl = -123.0;
+
+    auto y1=x/div_int32;
+    TEST_CHECK(y1.value() == -0.40650406504065040650406504065);
+    TEST_CHECK(y1.unit()[0]=='m');
+    TEST_CHECK(y1.unit()[1]==0);
+
+    auto y2=div_int32/x;
+    TEST_CHECK(y2.value() == -2.46);
+    TEST_CHECK(y2.unit()[0]=='1');
+    TEST_CHECK(y2.unit()[1]=='/');
+    TEST_CHECK(y2.unit()[2]=='m');
+    TEST_CHECK(y2.unit()[3]==0);
+
+    auto y3=x/div_int64;
+    TEST_CHECK(y3.value() == -0.40650406504065040650406504065);
+    TEST_CHECK(y3.unit()[0]=='m');
+    TEST_CHECK(y3.unit()[1]==0);
+
+    auto y4=div_int64/x;
+    TEST_CHECK(y4.value() == -2.46);
+    TEST_CHECK(y4.unit()[0]=='1');
+    TEST_CHECK(y4.unit()[1]=='/');
+    TEST_CHECK(y4.unit()[2]=='m');
+    TEST_CHECK(y4.unit()[3]==0);
+
+    auto y5=x/div_dbl;
+    TEST_CHECK(y5.value() == -0.40650406504065040650406504065);
+    TEST_CHECK(y5.unit()[0]=='m');
+    TEST_CHECK(y5.unit()[1]==0);
+
+    auto y6=div_dbl/x;
+    TEST_CHECK(y6.value() == -2.46);
+    TEST_CHECK(y6.unit()[0]=='1');
+    TEST_CHECK(y6.unit()[1]=='/');
+    TEST_CHECK(y6.unit()[2]=='m');
+    TEST_CHECK(y6.unit()[3]==0);
+
+}
+
+void test_RQty_operators10() {
+    // Comprehensive test of multiplication and division of units with multiple tokens
+    RQty x = 50.0*_("kg*m/s^2");
+    RQty y = 10.0*_("m/s^2");
+
+    auto y1=x/y;
+    TEST_CHECK(y1.value() == 5.0);
+    TEST_CHECK(y1.unit()[0]=='k');
+    TEST_CHECK(y1.unit()[1]=='g');
+    TEST_CHECK(y1.unit()[2]==0);
+
+    auto y2=y*x;
+    TEST_CHECK(y2.value() == 500.0);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]=='^');
+    TEST_CHECK(y2.unit()[2]=='2');
+    TEST_CHECK(y2.unit()[3]=='*');
+    TEST_CHECK(y2.unit()[4]=='k');
+    TEST_CHECK(y2.unit()[5]=='g');
+    TEST_CHECK(y2.unit()[6]=='/');
+    TEST_CHECK(y2.unit()[7]=='s');
+    TEST_CHECK(y2.unit()[8]=='^');
+    TEST_CHECK(y2.unit()[9]=='4');
+    TEST_CHECK(y2.unit()[10]==0);
+
+    auto y3=y/x;
+    TEST_CHECK(y3.value() == 0.2);
+    TEST_CHECK(y3.unit()[0]=='1');
+    TEST_CHECK(y3.unit()[1]=='/');
+    TEST_CHECK(y3.unit()[2]=='k');
+    TEST_CHECK(y3.unit()[3]=='g');
+    TEST_CHECK(y3.unit()[4]==0);
+
+    auto y4=x*y;
+    TEST_CHECK(y4.value() == 500.0);
+    TEST_CHECK(y4.unit()[0]=='k');
+    TEST_CHECK(y4.unit()[1]=='g');
+    TEST_CHECK(y4.unit()[2]=='*');
+    TEST_CHECK(y4.unit()[3]=='m');
+    TEST_CHECK(y4.unit()[4]=='^');
+    TEST_CHECK(y4.unit()[5]=='2');
+    TEST_CHECK(y4.unit()[6]=='/');
+    TEST_CHECK(y4.unit()[7]=='s');
+    TEST_CHECK(y4.unit()[8]=='^');
+    TEST_CHECK(y4.unit()[9]=='4');
+    TEST_CHECK(y4.unit()[10]==0);
+
+}
+
+void test_RQty_operators11() {
+    // Comprehensive test of multiplication and division of units with multiple tokens AND fractional exponents
+    RQty x = 50.0*_("kg*m^(1/3)/s^2");
+    RQty y = 10.0*_("m/s^1/2");
+
+    auto y1=x/y;
+    TEST_CHECK(y1.value() == 5.0);
+    TEST_CHECK(y1.unit()[0]=='k');
+    TEST_CHECK(y1.unit()[1]=='g');
+    TEST_CHECK(y1.unit()[2]=='/');
+    TEST_CHECK(y1.unit()[3]=='(');
+    TEST_CHECK(y1.unit()[4]=='m');
+    TEST_CHECK(y1.unit()[5]=='^');
+    TEST_CHECK(y1.unit()[6]=='2');
+    TEST_CHECK(y1.unit()[7]=='/');
+    TEST_CHECK(y1.unit()[8]=='3');
+    TEST_CHECK(y1.unit()[9]=='*');
+    TEST_CHECK(y1.unit()[10]=='s');
+    TEST_CHECK(y1.unit()[11]=='^');
+    TEST_CHECK(y1.unit()[12]=='3');
+    TEST_CHECK(y1.unit()[13]=='/');
+    TEST_CHECK(y1.unit()[14]=='2');
+    TEST_CHECK(y1.unit()[15]==')');
+    TEST_CHECK(y1.unit()[16]==0);
+
+    auto y2=y*x;
+    TEST_CHECK(y2.value() == 500.0);
+    TEST_CHECK(y2.unit()[0]=='m');
+    TEST_CHECK(y2.unit()[1]=='^');
+    TEST_CHECK(y2.unit()[2]=='4');
+    TEST_CHECK(y2.unit()[3]=='/');
+    TEST_CHECK(y2.unit()[4]=='3');
+    TEST_CHECK(y2.unit()[5]=='*');
+    TEST_CHECK(y2.unit()[6]=='k');
+    TEST_CHECK(y2.unit()[7]=='g');
+    TEST_CHECK(y2.unit()[8]=='/');
+    TEST_CHECK(y2.unit()[9]=='s');
+    TEST_CHECK(y2.unit()[10]=='^');
+    TEST_CHECK(y2.unit()[11]=='5');
+    TEST_CHECK(y2.unit()[12]=='/');
+    TEST_CHECK(y2.unit()[13]=='2');
+    TEST_CHECK(y2.unit()[14]==0);
+
+    auto y3=y/x;
+    TEST_CHECK(y3.value() == 0.2);
+    TEST_CHECK(y3.unit()[0]=='m');
+    TEST_CHECK(y3.unit()[1]=='^');
+    TEST_CHECK(y3.unit()[2]=='2');
+    TEST_CHECK(y3.unit()[3]=='/');
+    TEST_CHECK(y3.unit()[4]=='3');
+    TEST_CHECK(y3.unit()[5]=='*');
+    TEST_CHECK(y3.unit()[6]=='s');
+    TEST_CHECK(y3.unit()[7]=='^');
+    TEST_CHECK(y3.unit()[8]=='3');
+    TEST_CHECK(y3.unit()[9]=='/');
+    TEST_CHECK(y3.unit()[10]=='2');
+    TEST_CHECK(y3.unit()[11]=='/');
+    TEST_CHECK(y3.unit()[12]=='k');
+    TEST_CHECK(y3.unit()[13]=='g');
+    TEST_CHECK(y3.unit()[14]==0);
+
+    auto y4=x*y;
+    TEST_CHECK(y4.value() == 500.0);
+    TEST_CHECK(y4.unit()[0]=='k');
+    TEST_CHECK(y4.unit()[1]=='g');
+    TEST_CHECK(y4.unit()[2]=='*');
+    TEST_CHECK(y4.unit()[3]=='m');
+    TEST_CHECK(y4.unit()[4]=='^');
+    TEST_CHECK(y4.unit()[5]=='4');
+    TEST_CHECK(y4.unit()[6]=='/');
+    TEST_CHECK(y4.unit()[7]=='3');
+    TEST_CHECK(y4.unit()[8]=='/');
+    TEST_CHECK(y4.unit()[9]=='s');
+    TEST_CHECK(y4.unit()[10]=='^');
+    TEST_CHECK(y4.unit()[11]=='5');
+    TEST_CHECK(y4.unit()[12]=='/');
+    TEST_CHECK(y4.unit()[13]=='2');
+    TEST_CHECK(y4.unit()[14]==0);
+}
+
+void test_RQty_operators12() {
+    // Comprehensive test of pow operation on unit
+    RQty x = 50.0*_("kg*m^(1/3)/s^2");
+
+    // Exponents as templates as they are known at compile time
+    auto y1=pow<2>(x);
+    TEST_CHECK(y1.value() == 2500.0);
+    TEST_CHECK(y1.unit()[0]=='k');
+    TEST_CHECK(y1.unit()[1]=='g');
+    TEST_CHECK(y1.unit()[2]=='^');
+    TEST_CHECK(y1.unit()[3]=='2');
+    TEST_CHECK(y1.unit()[4]=='*');
+    TEST_CHECK(y1.unit()[5]=='m');
+    TEST_CHECK(y1.unit()[6]=='^');
+    TEST_CHECK(y1.unit()[7]=='2');
+    TEST_CHECK(y1.unit()[8]=='/');
+    TEST_CHECK(y1.unit()[9]=='3');
+    TEST_CHECK(y1.unit()[10]=='/');
+    TEST_CHECK(y1.unit()[11]=='s');
+    TEST_CHECK(y1.unit()[12]=='^');
+    TEST_CHECK(y1.unit()[13]=='4');
+    TEST_CHECK(y1.unit()[14]==0);
+
+    auto y2=pow<-2>(x);
+    TEST_CHECK(y2.value() == 1.0/2500.0);
+    TEST_CHECK(y2.unit()[0]=='s');
+    TEST_CHECK(y2.unit()[1]=='^');
+    TEST_CHECK(y2.unit()[2]=='4');
+    TEST_CHECK(y2.unit()[3]=='/');
+    TEST_CHECK(y2.unit()[4]=='(');
+    TEST_CHECK(y2.unit()[5]=='k');
+    TEST_CHECK(y2.unit()[6]=='g');
+    TEST_CHECK(y2.unit()[7]=='^');
+    TEST_CHECK(y2.unit()[8]=='2');
+    TEST_CHECK(y2.unit()[9]=='*');
+    TEST_CHECK(y2.unit()[10]=='m');
+    TEST_CHECK(y2.unit()[11]=='^');
+    TEST_CHECK(y2.unit()[12]=='2');
+    TEST_CHECK(y2.unit()[13]=='/');
+    TEST_CHECK(y2.unit()[14]=='3');
+    TEST_CHECK(y2.unit()[15]==')');
+    TEST_CHECK(y2.unit()[16]==0);
+
+
+    auto y3=pow<1,2>(x);
+    TEST_CHECK(y3.value() == std::sqrt(50.0));
+    TEST_CHECK(y3.unit()[0]=='k');
+    TEST_CHECK(y3.unit()[1]=='g');
+    TEST_CHECK(y3.unit()[2]=='^');
+    TEST_CHECK(y3.unit()[3]=='1');
+    TEST_CHECK(y3.unit()[4]=='/');
+    TEST_CHECK(y3.unit()[5]=='2');
+    TEST_CHECK(y3.unit()[6]=='*');
+    TEST_CHECK(y3.unit()[7]=='m');
+    TEST_CHECK(y3.unit()[8]=='^');
+    TEST_CHECK(y3.unit()[9]=='1');
+    TEST_CHECK(y3.unit()[10]=='/');
+    TEST_CHECK(y3.unit()[11]=='6');
+    TEST_CHECK(y3.unit()[12]=='/');
+    TEST_CHECK(y3.unit()[13]=='s');
+    TEST_CHECK(y3.unit()[14]==0);
+
+    auto y4=sqrt(x);
+    TEST_CHECK(y4.value() == std::sqrt(50.0));
+    TEST_CHECK(y4.unit()[0]=='k');
+    TEST_CHECK(y4.unit()[1]=='g');
+    TEST_CHECK(y4.unit()[2]=='^');
+    TEST_CHECK(y4.unit()[3]=='1');
+    TEST_CHECK(y4.unit()[4]=='/');
+    TEST_CHECK(y4.unit()[5]=='2');
+    TEST_CHECK(y4.unit()[6]=='*');
+    TEST_CHECK(y4.unit()[7]=='m');
+    TEST_CHECK(y4.unit()[8]=='^');
+    TEST_CHECK(y4.unit()[9]=='1');
+    TEST_CHECK(y4.unit()[10]=='/');
+    TEST_CHECK(y4.unit()[11]=='6');
+    TEST_CHECK(y4.unit()[12]=='/');
+    TEST_CHECK(y4.unit()[13]=='s');
+    TEST_CHECK(y4.unit()[14]==0);
+
+}
+
+void test_RQty_operators13() {
+    // Comprehensive test of pow operation on units with numeric part (conversions) and exponents
+    RQty x = 16*_("3/4_apples");
+
+    auto y1=pow<2>(x);
+    TEST_CHECK(y1.value() == 256.0);
+    TEST_CHECK(y1.unit()[0]=='9');
+    TEST_CHECK(y1.unit()[1]=='/');
+    TEST_CHECK(y1.unit()[2]=='1');
+    TEST_CHECK(y1.unit()[3]=='6');
+    TEST_CHECK(y1.unit()[4]=='_');
+    TEST_CHECK(y1.unit()[5]=='a');
+    TEST_CHECK(y1.unit()[6]=='p');
+    TEST_CHECK(y1.unit()[7]=='p');
+    TEST_CHECK(y1.unit()[8]=='l');
+    TEST_CHECK(y1.unit()[9]=='e');
+    TEST_CHECK(y1.unit()[10]=='s');
+    TEST_CHECK(y1.unit()[11]=='^');
+    TEST_CHECK(y1.unit()[12]=='2');
+    TEST_CHECK(y1.unit()[13]==0);
+
+    // Push the digits to the limit
+    Qty<"3_psi"> zpsi = 1.234*_("3_kPa");
+    RQty z = zpsi;
+
+    auto y2=pow<1,2>(z);
+    TEST_CHECK(std::abs(y2.value() - 0.42305622363827502437298)<1e-15);
+
+    const char expected[]="3900231685776981/2251799813685248_psi^1/2";
+    auto unit = y2.unit();
+    for(auto i=0;expected[i]!=0;++i) {
+        TEST_CHECK(unit[i]==expected[i]);
+    }
+
+}
+
+void test_RQty_operators14() {
+    // Test automatic conversion of non-dimensional values
+    RQty x = 10*_("psf");
+
+    RQty y = 5*_("Pa");
+
+    // Z is a non-dimensional quantity
+    auto z = x/y;
+
+    // Auto conversion from unit to double
+    double zeta = 95.7605179606716852322;
+
+    // Explicitly converting to non-dinemsional simplified unit
+    RQty nonD(zeta,"");
+
+    // Test implicit simplification from psf/Pa to non-dimensional  during equality operator
+    TEST_CHECK(nonD == z);
+
+}
+
+
+void test_RQty_operators15() {
+    // Test comparison operators
+    RQty w = 10*_("psi");
+
+    RQty x = 14*_("psi");
+
+    RQty y = 50*_("kPa");
+
+    RQty z = (-10)*_("psi");
+
+    RQty zz = w/y;
+
+    TEST_CHECK(w < x);
+    TEST_CHECK(w > y);
+    TEST_CHECK(w > z);
+
+    TEST_CHECK(x > w);
+    TEST_CHECK(x > y);
+    TEST_CHECK(x > z);
+
+    TEST_CHECK(y < w);
+    TEST_CHECK(y < x);
+    TEST_CHECK(y > z);
+
+    TEST_CHECK(z < w);
+    TEST_CHECK(z < x);
+    TEST_CHECK(z < y);
+
+    TEST_CHECK(w < 2*y);
+    TEST_CHECK(w > x/2);
+    TEST_CHECK(w == -z);
+    TEST_CHECK(w == 68.94757293168361'33672*_("kPa"));
+    // Allow for variation in the very last digit
+    TEST_CHECK(w <= 68.94757293168362*_("kPa"));
+    TEST_CHECK(w >= 68.94757293168360*_("kPa"));
+
+    TEST_CHECK(w == min(w,x));
+    TEST_CHECK(x == max(w,x));
+
+    TEST_CHECK(zz < 1.4);
+    TEST_CHECK(1.4 > zz);
+    TEST_CHECK(1.3 < zz);
+    TEST_CHECK(zz > 1.3);
+
+    // This case is tricky because the comparison of a Qty
+    // with a double may down-convert units to double
+    // and once it's a double the standard operator == will be
+    // used. Unit tests may fail because of the last bit
+    // which might be wrong due to unit conversion.
+    // We offer specialized operator == that will add tolerance
+    // in the last bit of the 'double' value.
+
+    TEST_CHECK(min(zz,1.0) == 1.0);
+    TEST_CHECK(min(1.0, zz) == 1.0);
+    TEST_CHECK(max(zz,1.4) == 1.4);
+    TEST_CHECK(max(1.4, zz) == 1.4);
+
+}
+
+void test_RQty_operators16() {
+
+    RQty stress1 = 1000*_("MPa");
+    auto stress2 = 2*_("MPa/MPa^1/2")*sqrt(stress1);
+
+    double convfactor = stress1.conversionFactorTo(stress2);
+
+    auto maximum = max(stress2, stress1);
+
+    TEST_CHECK(convfactor == 1.0);
+
+    TEST_CHECK(maximum == stress1);
+
+    RQty check1 = 1'000'000*_("N/m^2");
+    RQty check2 = 1*_("mm^4");
+    RQty check3 = 1*_("MPa");
+    RQty check4 = 1*_("mm^3");
+
+    auto result = check1 * check2 / (check3 * check4);
+    TEST_CHECK(result == 1*_("mm"));
+
+    RQty mpa = 27.6*_("MPa^2");
+    RQty psi = 1.0*_("psi^2");
+
+    convfactor = psi.conversionFactorTo(mpa);
+    TEST_CHECK(convfactor>0.0);
+
+    RQty fc = 27.6*_("MPa");
+    RQty check5 = 1*_("psi^(1/2)");
+    auto check6 = check5*sqrt(fc);
+    auto regularpsi = sqrt(psi);
+
+    double otherconv = check6.conversionFactorTo(regularpsi);
+
+    TEST_CHECK(std::abs(otherconv-12.0431614508072262725328411) < 1e-14);
+
+    RQty shearfc = 2.0*_("psi^1/2")*sqrt(fc);
+
+    TEST_CHECK(shearfc==126.5391885757732261626*_("psi"));
+
+}
+
 /*
 void other_function() {
     Qty<"m"> x = 50.0*_("m");
@@ -1811,5 +2421,23 @@ TEST_LIST = {
     {"Qty-Operators14",test_Qty_operators14},
     {"Qty-Operators15",test_Qty_operators15},
     {"Qty-Operators16",test_Qty_operators16},
+
+    {"RQty-Operators1",test_RQty_operators1},
+    {"RQty-Operators2",test_RQty_operators2},
+    {"RQty-Operators3",test_RQty_operators3},
+    {"RQty-Operators4",test_RQty_operators4},
+    {"RQty-Operators5",test_RQty_operators5},
+    {"RQty-Operators6",test_RQty_operators6},
+    {"RQty-Operators7",test_RQty_operators7},
+    {"RQty-Operators8",test_RQty_operators8},
+    {"RQty-Operators9",test_RQty_operators9},
+    {"RQty-Operators10",test_RQty_operators10},
+    {"RQty-Operators11",test_RQty_operators11},
+    {"RQty-Operators12",test_RQty_operators12},
+    {"RQty-Operators13",test_RQty_operators13},
+    {"RQty-Operators14",test_RQty_operators14},
+    {"RQty-Operators15",test_RQty_operators15},
+    {"RQty-Operators16",test_RQty_operators16},
+
     {NULL,NULL}
 };
