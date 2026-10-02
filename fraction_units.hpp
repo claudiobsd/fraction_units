@@ -6,8 +6,8 @@
 #include <cmath>
 #include <bit>
 
-// Define this as-needed to enable the run time component class
-#define RUNTIME_COMPONENT 1
+// Define this ELSEWHERE before including this header, to enable the run time component class
+//#define RUNTIME_COMPONENT 1
 
 #if defined(__clang__)
 // Use clang syntax attributes

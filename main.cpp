@@ -1,8 +1,8 @@
 #include <cmath>
 #include <iostream>
-#include <iomanip>
 
 #define RUNTIME_COMPONENT 1
+#define TEST_RUNTIME_COMPONENT 1
 #include "fraction_units.hpp"
 
 #include "external/test/include/acutest.h"
@@ -1641,6 +1641,7 @@ void test_Qty_operators16() {
 
 }
 
+#ifdef TEST_RUNTIME_COMPONENT
 
 void test_RQty_operators1() {
     // Try to use some quantities, this is all constexpr so verify the compiler
@@ -2251,96 +2252,8 @@ void test_RQty_operators16() {
 
 }
 
-/*
-void other_function() {
-    Qty<"m"> x = 50.0*_("m");
+#endif
 
-    auto y=x+(10.0*_("cm"));
-    // Try to create a variable (not constexpr)b
-    auto density_whatever = 4.5*_("kg/ft^3");
-
-    // Assign it to a variable with a different unit, the compiler
-    // should emit code that does the conversion at run time
-    // simply by multiplying the conversion factor, all units stuff
-    // is done at compile time and no code should be generated
-    // even though these two aren't constexpr values
-    Qty<"kg/m^3"> density = density_whatever;
-
-    std::cout << "Density = " << density.value() << "_" << density.unit() << std::endl;
-
-    // Do an assignment of a temporary, it should convert the units correctly
-    // then emit code that only stores the result (even the conversion factor
-    // should be applied at compile time)
-    Qty<"m/s^2"> g=32.174*_("ft/s^2");
-
-    std::cout << "g = " << g.value() << "_" << g.unit() << std::endl;
-
-    // Make another variable
-    Qty<"m^2"> area=100.0*_("m^2");
-    // And multiply them together with the length from before, the compiler
-    // should generate code that multiplies the values together, the unit stuff
-    // is all done at compile time
-    auto volume = y * area * g;
-
-    //std::cout << "Areag = " << areag.value << "_" << areag.unit.u_def << std::endl;
-    std::cout << "Volume = " << volume.value() << "_" << volume.unit() << std::endl;
-
-    y+=7*_("cm");
-    y-=1*_("mm");
-
-    std::cout << "y=" << y.value() << "_" << y.unit() << std::endl;
-
-    Qty<"3_apples"> trio{1.0};
-
-    auto fourapples = trio + 1*_("apples");
-
-    std::cout << "4apples=" << fourapples.value() << "_" << fourapples.unit() << std::endl;
-
-    // ************************************************************
-    // Basic tests for the run-time components
-
-    // Constructor
-    RQty velocity(10.0,"m/s");
-
-    // Conversion from Qty<U>
-    RQty speed = 10.0*_("m/s");
-
-    // Multiplication of units at run time
-    speed*=velocity;
-
-    std::cout << "speed^2 =" << speed.value() << "_" << speed.unit() << std::endl;
-
-    // Incompatibility of units at run time
-    try {
-    speed += velocity;
-    }
-    catch(std::exception& e) {
-        std::cout << "Exception thrown: " << e.what() << std::endl;
-    }
-
-    speed= velocity / 2;
-
-    std::cout << "speed/2 =" << speed.value() << "_" << speed.unit() << std::endl;
-
-    auto flow = massFlow(density,area,velocity);
-
-    std::cout << "flow=" << flow.value() << "_" << flow.unit() << std::endl;
-
-    // Check if the constants-as-units work
-
-    auto angle = 180*_("°");
-
-    std::cout << "cos 180 degrees = " << cosUnit(angle) << std::endl;
-
-    // Test some greek letters
-
-    const RQty length(1,"µ");
-
-    Qty<"Å"> angstrom = length;
-
-    std::cout << "length in Å = " << angstrom.value() << "_Å" << std::endl;
-}
-*/
 TEST_LIST = {
     {"BasicMath-Pow",test_basicmath1},
     {"BasicMath-nRoot",test_basicmath2},
@@ -2422,6 +2335,7 @@ TEST_LIST = {
     {"Qty-Operators15",test_Qty_operators15},
     {"Qty-Operators16",test_Qty_operators16},
 
+#ifdef TEST_RUNTIME_COMPONENT
     {"RQty-Operators1",test_RQty_operators1},
     {"RQty-Operators2",test_RQty_operators2},
     {"RQty-Operators3",test_RQty_operators3},
@@ -2438,6 +2352,7 @@ TEST_LIST = {
     {"RQty-Operators14",test_RQty_operators14},
     {"RQty-Operators15",test_RQty_operators15},
     {"RQty-Operators16",test_RQty_operators16},
+#endif
 
     {NULL,NULL}
 };
