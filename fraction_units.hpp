@@ -1560,6 +1560,11 @@ struct UnitDefinition {
         const UnitDefinition simplified = simplify();
         return simplified.definition[0].tokStart==simplified.definition[0].tokEnd;
     }
+    template<UTxt W>
+    _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ bool isCompatibleWith() const {
+        return divide(UnitDefinition{W}).isNonDimensional();
+    }
+
     // Name of the unit in question (abbreviated form used in formulae, not a
     // formal name, like "Pa" for Pascals) Can be an empty string, an unnamed unit
     char u_name[maxTokenLength] = {};
