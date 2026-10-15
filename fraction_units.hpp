@@ -1873,11 +1873,17 @@ public:
         return Qty<U>{-number};
     }
 
+    // Return the numeric value of this quantity as a double
     _OPTIMIZE_ _CONSTEXPR_ inline double value() const { return number; }
+    // Return the numeric value of this quantity after conversion to another unit
+    template<UTxt W>
+    _OPTIMIZE_ _CONSTEXPR_ inline double valueAs() {
+        constexpr auto convFactor = conversionFactor(Qty<U>::unitDef, Qty<W>::unitDef);
+        return number * convFactor;
+    }
     _OPTIMIZE_ _CONSTEXPR_ const char *unit() const { return unitDef.u_def; }
 
     template <UTxt V> friend class Qty;
-
 
     template <UTxt W, UTxt V>
     friend consteval inline double
@@ -2262,7 +2268,7 @@ _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<V> rh
     // Allow 4 bits being wrong after conversions
     uint64_t lhsfinal = std::bit_cast<uint64_t>(lhs.value());
     uint64_t rhsfinal = std::bit_cast<uint64_t>(rhs.value());
-    return (lhsfinal^rhsfinal)<16ULL;
+    return ((lhsfinal-rhsfinal)<16ULL) || ((rhsfinal-lhsfinal)<16ULL);
 }
 
 // Comparison of different units includes 1-bit precision loss tolerance for the
@@ -2274,18 +2280,18 @@ _OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const Qty<W> rh
     double finalvalue = rhs.value() * convFactor;
     uint64_t lhsfinal = std::bit_cast<uint64_t>(lhs.value());
     uint64_t rhsfinal = std::bit_cast<uint64_t>(finalvalue);
-    return (lhsfinal^rhsfinal)<16ULL;
+    return ((lhsfinal-rhsfinal)<16ULL) || ((rhsfinal-lhsfinal)<16ULL);
 }
 
 // Operators with double to avoid automatic downgrade to a double comparison
 // The downgrade would bypass the 1-bit tolerance if the unit is not true non-dimensional
 template <UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const double rhs) {
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const Qty<V> lhs, const double rhs) requires(UnitDefinition{V}.isNonDimensional() == true) {
     return lhs==Qty<"">{rhs};
 }
 
 template <UTxt V>
-_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const double lhs, const Qty<V> rhs) {
+_OPTIMIZE_ _CONSTEXPR_ inline bool operator ==(const double lhs, const Qty<V> rhs) requires(UnitDefinition{V}.isNonDimensional() == true) {
     return rhs==Qty<"">{lhs};
 }
 

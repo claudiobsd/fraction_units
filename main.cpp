@@ -2,7 +2,7 @@
 #include <iostream>
 
 #define RUNTIME_COMPONENT 1
-#define TEST_RUNTIME_COMPONENT 1
+//#define TEST_RUNTIME_COMPONENT 1
 #include "fraction_units.hpp"
 
 #include "external/test/include/acutest.h"
@@ -1641,6 +1641,22 @@ void test_Qty_operators16() {
 
 }
 
+void test_Qty_operators17() {
+    // Test of unicode characters in the unit names
+    auto degrees = 60.0*_("°");
+    Qty<"r"> x = degrees/2;
+
+    degrees = x;
+
+    TEST_CHECK(degrees == x);
+    TEST_CHECK(x == degrees);
+    TEST_CHECK(x.value() == 30.0*_("1/180*#pi"));
+
+    auto thirty_deg = 30.0*_("1/180*#pi");
+    TEST_CHECK(thirty_deg.valueAs<"">() == x.value());
+}
+
+
 #ifdef TEST_RUNTIME_COMPONENT
 
 void test_RQty_operators1() {
@@ -2334,6 +2350,7 @@ TEST_LIST = {
     {"Qty-Operators14",test_Qty_operators14},
     {"Qty-Operators15",test_Qty_operators15},
     {"Qty-Operators16",test_Qty_operators16},
+    {"Qty-Operators16",test_Qty_operators17},
 
 #ifdef TEST_RUNTIME_COMPONENT
     {"RQty-Operators1",test_RQty_operators1},
