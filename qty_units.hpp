@@ -20,8 +20,11 @@
 // Unknown compiler, don't try to optimize anything
 #define _OPTIMIZE_
 #endif
-
+#ifdef RUNNING_UNIT_TESTS
 #define _ALWAYS_CONSTEXPR_ constexpr
+#else
+#define _ALWAYS_CONSTEXPR_ consteval
+#endif
 // constexpr
 #define _CONSTEXPR_ constexpr
 
@@ -88,39 +91,7 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double intpow(long double number,
     return (double)(result*ldnumber);
 }
 
-// For the same reason, we need fractional exponents
-_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double introot(double number,
-                                                    int64_t nth) {
-    // Make sure that the root is a positive integer AND that number is also positive
-    // This is true for unit coefficients, so we won't check for that here for speed reasons
 
-    int64_t bitmask=1;
-    int64_t log2=0;
-
-    while(number>(double)bitmask && log2<64) {
-        bitmask<<=1;
-        log2++;
-    }
-
-    // Initial guess for Newton-Raphson
-    double xnext = (double)(1LL+ (1LL<<(1+(log2/nth))));
-    double xprev = number;
-    double xrepeat= number;
-    int iterations = 0;
-    do {
-        xrepeat = xprev;
-        xprev = xnext;
-        xnext = (((double)nth-1)*xprev+number/intpow(xprev,nth-1))/(double)nth;
-        ++iterations;
-    } while(xprev!=xnext && xnext!=xrepeat && iterations<200);
-
-    if(iterations == 200 ) {
-        // 100 iterations is plenty for the 100th root of any integer up to 2^63
-        // For roots more than 100 this will limit the quality of the result (but another method should be used!)
-        throw "introot exceeded number of iterations";
-    }
-    return xnext;
-}
 
 // Apparently, also std::frexp and std::ldexp are not constexpr yet on C++20, so here's our own implementation as well
 _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double dbl_mantissa(double value) {
@@ -143,6 +114,47 @@ _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double dbl_make(double mantissa, int expone
     exponent&=0x7ff;
     bitconversion |= ((uint64_t)exponent)<<52;
     return std::bit_cast<double,uint64_t>(bitconversion);
+}
+
+// For the same reason, we need fractional exponents
+_OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ double introot(double number,
+                                             int64_t nth) {
+    // Make sure that the root is a positive integer AND that number is also positive
+    // This is true for unit coefficients, so we won't check for that here for speed reasons
+
+    int exp = dbl_exponent(number);
+    bool invert = false;
+
+    if(number<0.0) {
+        number = -number;
+    }
+
+    if(exp<0) {
+        number = 1.0/number;
+        invert = true;
+        exp = dbl_exponent(number);
+    }
+
+    // Initial guess for Newton-Raphson
+    double xnext = intpow(2.0,exp/nth);
+    double xprev = number;
+    double xrepeat= number;
+    int iterations = 0;
+    uint64_t xprevfinal;
+    uint64_t xnextfinal;
+    do {
+        xrepeat = xprev;
+        xprev = xnext;
+        xnext = (((double)nth-1)*xprev+number/intpow(xprev,nth-1))/(double)nth;
+        ++iterations;
+        xprevfinal = std::bit_cast<uint64_t>(xprev);
+        xnextfinal = std::bit_cast<uint64_t>(xnext);
+    } while((xprevfinal-xnextfinal)>=2 && (xnextfinal-xprevfinal)>=2 && xnext!=xrepeat && iterations<10000);
+
+    if(iterations == 10000 ) {
+        throw "introot exceeded number of iterations";
+    }
+    return invert? 1.0/xnext : xnext;
 }
 
 _OPTIMIZE_ inline _ALWAYS_CONSTEXPR_ size_t outputDigitsNoExponent(int64_t number, char *output, size_t buffersize) {
@@ -1803,16 +1815,16 @@ class RQty;
 template <UTxt U> class Qty {
 public:
     // Default constructor creates the non-dimensional number 0.0
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty() : number(0.0) {}
+    _OPTIMIZE_ _CONSTEXPR_ inline Qty() : number(0.0) {}
     // Constructor with an integer number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(int64_t _value)
+    _OPTIMIZE_ _CONSTEXPR_ inline explicit Qty(int64_t _value)
         : number((double)_value) {}
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(int _value) requires(sizeof(int)!=sizeof(int64_t))
+    _OPTIMIZE_ _CONSTEXPR_ inline explicit Qty(int _value) requires(sizeof(int)!=sizeof(int64_t))
         : number((double)_value) {}
     // Constructor with a floating point number
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline explicit Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==false) : number(_value) {}
+    _OPTIMIZE_ _CONSTEXPR_ inline explicit Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==false) : number(_value) {}
     // Implicit conversion from double type ONLY allowed when the unit is non-dimensional
-    _OPTIMIZE_ _ALWAYS_CONSTEXPR_ inline Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==true) : number(_value / Qty<U>::conversionFactorTo(Qty<"">{})) {}
+    _OPTIMIZE_ _CONSTEXPR_ inline Qty(double _value) requires(UnitDefinition{U}.isTrueNonDimensional()==true) : number(_value / Qty<U>::conversionFactorTo(Qty<"">{})) {}
     // Calculate a multiplicative conversion factor to convert from
     // the current unit to the unit of the given argument
     template <UTxt V>
@@ -1965,6 +1977,14 @@ private:
     static constexpr const UnitDefinition unitDef = {U};
 };
 
+template<class Lambda, int=(Lambda{}(), 0)>
+constexpr bool is_constexpr(Lambda) { return true; }
+constexpr bool is_constexpr(...) { return false; }
+
+template<UTxt U>
+constexpr bool is_constexpr(const Qty<U>& ) requires(is_constexpr([](Qty<U> lhs){return lhs.value();})) { return true; }
+template<UTxt U>
+constexpr bool is_constexpr(const Qty<U>& ) requires(!is_constexpr([](Qty<U> lhs){return lhs.value();})) { return false; }
 
 // Calculate a multiplicative conversion factor to convert from
 // the current unit to the unit of the given argument
@@ -2244,7 +2264,12 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
     constexpr auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
+    if constexpr (is_constexpr(lhs)) {
     return Qty<finalUnitDefinition>{intpow(lhs.value(),EXP)};
+    }
+    else {
+        return Qty<finalUnitDefinition>{std::pow(lhs.value(),EXP)};
+    }
 }
 
 template <int64_t NUM, int64_t DEN, UTxt V>
@@ -2254,9 +2279,18 @@ _OPTIMIZE_ _CONSTEXPR_ inline auto pow(const Qty<V> lhs) {
     constexpr auto finalUnitDefinition =
         to_UTxt<finalUnit.u_defLen>(finalUnit);
     // This it the only operation the compiler will do at run time if needed
-    return Qty<finalUnitDefinition>{intpow(introot(lhs.value(),DEN),NUM)};
+    if constexpr (is_constexpr(lhs)) {
+        return Qty<finalUnitDefinition>{intpow(introot(lhs.value(),DEN),NUM)};
+    }
+    else {
+        if constexpr (DEN == 2 * NUM ) {
+            return Qty<finalUnitDefinition>{std::sqrt(lhs.value())};
+        }
+        else {
+        return Qty<finalUnitDefinition>{std::pow(lhs.value(),(double)NUM/(double)DEN)};
+        }
+    }
 }
-
 template <UTxt V>
 _OPTIMIZE_ _CONSTEXPR_ inline auto sqrt(const Qty<V> lhs) {
     return pow<1,2>(lhs);
