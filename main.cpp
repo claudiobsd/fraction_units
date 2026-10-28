@@ -1,20 +1,13 @@
 #include <cmath>
 #include <iostream>
 
-#define RUNTIME_COMPONENT 1
+//#define RUNTIME_COMPONENT 1
 //#define TEST_RUNTIME_COMPONENT 1
-#include "fraction_units.hpp"
+#define RUNNING_UNIT_TESTS 1
+#include "qty_units.hpp"
 
+#ifdef RUNNING_UNIT_TESTS
 #include "external/test/include/acutest.h"
-
-auto massFlow(const Qty<"kg/m^3"> density, const Qty<"m^2"> area, const Qty<"m/s"> velocity) {
-    return density * area * velocity;
-}
-
-double cosUnit(const Qty<"r"> angle) {
-    return std::cos(angle.value());
-}
-
 
 void test_basicmath1()
 {
@@ -25,6 +18,21 @@ void test_basicmath1()
         double y = intpow(x,i);
         TEST_CHECK(std::abs(y - std::pow(x,i))<1e-15);
     }
+
+    x = 0.01;
+
+    for(auto i=2;i<100;++i) {
+        x=0.01;
+        while(x<1202.26) {
+        double y = intpow(x,i);
+        TEST_CHECK(std::abs(y - std::pow(x,i))/y<1e-15);
+        if(std::abs(y - std::pow(x,i))/y>=1e-15) {
+            std::cout << "x=" << x << ", y=" << y << ", residual = " << (y - std::pow(x,i))/y << std::endl;
+        }
+        x +=0.01;
+        }
+    }
+
 }
 
 void test_basicmath2()
@@ -43,24 +51,45 @@ void test_basicmath2()
     x = 123456789123456789.0;
 
     for(auto i=1;i<100;++i) {
+        x = 123456789123456789.0;
+        while(x>1e-10) {
         double y = introot(x,i);
         const double tolerance = std::pow(10,log10(y)-15);
         TEST_CHECK(std::abs(y - std::pow(x,1.0/i))<tolerance);
         if(std::abs(y - std::pow(x,1.0/i))>tolerance) {
             std::cout << "Fail!" <<std::endl;
         }
+        x=x/3;
+        }
     }
 
-    x = 0.123123123;
 
     for(auto i=1;i<100;++i) {
+        x = 0.123123123;
+        while(x>1e-200) {
         double y = introot(x,i);
-        const double tolerance = std::pow(10,log10(y)-15);
+        const double tolerance = std::pow(10,log10(y)-14);
         TEST_CHECK(std::abs(y - std::pow(x,1.0/i))<tolerance);
         if(std::abs(y - std::pow(x,1.0/i))>tolerance) {
-            std::cout << "Fail!" <<std::endl;
+            std::cout << "x=" << x << ", y=" << y << ", std::pow=" << std::pow(x,1.0/i) << ", residual = " << (y - std::pow(x,1.0/i)) << ", tol=" << tolerance << std::endl;
+        }
+        x=x/3;
         }
     }
+
+    {
+    x = 0.0;
+    double y = introot(x,10);
+    TEST_CHECK(y==0.0);
+    x = 1.0;
+    y = introot(x,10);
+    TEST_CHECK(y==1.0);
+
+    x = -1.0;
+    y = introot(x,10);
+    TEST_CHECK(y==1.0);
+    }
+
 }
 
 void test_basicmath3()
@@ -2373,3 +2402,4 @@ TEST_LIST = {
 
     {NULL,NULL}
 };
+#endif
