@@ -20,7 +20,7 @@
 // Unknown compiler, don't try to optimize anything
 #define _OPTIMIZE_
 #endif
-#ifdef RUNNING_UNIT_TESTS
+#if defined(RUNNING_UNIT_TESTS)||defined(_MSC_VER)
 #define _ALWAYS_CONSTEXPR_ constexpr
 #else
 #define _ALWAYS_CONSTEXPR_ consteval
